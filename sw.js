@@ -1,17 +1,17 @@
-// Service Worker para English Partner PWA (v6.0.0 Network-First)
-const CACHE_NAME = 'english-partner-v6.0.0';
+// Service Worker para English Partner PWA (v7.0.0 Scorched Earth Cache & Network-First)
+const CACHE_NAME = 'english-partner-v7.0.0';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
   './manifest.json',
-  './css/styles.css?v=6',
-  './js/config.js?v=6',
-  './js/curriculum.js?v=6',
-  './js/audio-vad.js?v=6',
-  './js/voice-engine-v5.js?v=6',
-  './js/evaluator-v5.js?v=6',
-  './js/sync.js?v=6',
-  './js/app-v5.js?v=6'
+  './css/styles.css?v=7',
+  './js/config.js?v=7',
+  './js/curriculum.js?v=7',
+  './js/audio-vad.js?v=7',
+  './js/voice-engine-v7.js?v=7',
+  './js/evaluator-v5.js?v=7',
+  './js/sync.js?v=7',
+  './js/app-v7.js?v=7'
 ];
 
 self.addEventListener('install', (event) => {
@@ -27,6 +27,7 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         keys.map((key) => {
           if (key !== CACHE_NAME) {
+            console.log('[SW] Purgando caché obsoleta:', key);
             return caches.delete(key);
           }
         })
@@ -36,6 +37,7 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  // Nunca cachear llamadas a APIs remotas de Google o Google Apps Script
   if (
     event.request.url.includes('generativelanguage.googleapis.com') ||
     event.request.url.includes('script.google.com')
@@ -60,6 +62,7 @@ self.addEventListener('fetch', (event) => {
           if (event.request.destination === 'document') {
             return caches.match('./index.html');
           }
+          return new Response('Offline', { status: 503, statusText: 'Offline' });
         });
       })
   );

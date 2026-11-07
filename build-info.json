@@ -1,10 +1,16 @@
 {
-  "build_timestamp_utc": "2026-11-07T18:49:56Z",
+  "project": "English Partner",
+  "version": "7.0.0",
+  "build_timestamp_utc": "2026-11-07T20:10:00Z",
   "target_environment": "production",
-  "verified_models": [
-    "gemini-3.5-flash-lite",
-    "gemini-3.8-flash",
-    "gemini-3.1-pro-preview"
+  "platform": "PWA / WebKit Safari / Android Chrome / Samsung Internet",
+  "tts_engine": "Google Gemini Native Studio Audio (gemini-3.8-flash-lite-tts, voice Aoede 24kHz)",
+  "features": [
+    "Gemini Studio TTS (Aoede 24kHz WAV)",
+    "Blind Listening Mode (Modo Oido Puro) with On-Demand Reveal",
+    "Safari & Android Tap-to-Talk Shield for Multi-Turn Voice",
+    "Complete Post-Session Conversation Transcript (Tab 4)",
+    "Scorched Earth Cache-Busting v7.0.0"
   ],
-  "cache_version": "english-partner-v4.0.0"
+  "verification": "jsc syntax check passed with exit code 0"
 }

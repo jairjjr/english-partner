@@ -7,7 +7,7 @@
   <meta name="description" content="Entrenador conversacional de inglés por voz de 10 minutos con diagnóstico de gramática, vocabulario y pronunciación.">
   <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#0ea5e9">
-  <link rel="stylesheet" href="./css/styles.css">
+  <link rel="stylesheet" href="./css/styles.css?v=7">
 </head>
 <body>
 
@@ -98,9 +98,17 @@
           <!-- Barras generadas por app.js -->
         </div>
 
-        <!-- TRANSCRIPCIÓN Y ESTADO DEL COACH EN VIVO -->
-        <div class="live-speech-card">
-          <p id="live-transcript-text">Iniciando micrófono y coach...</p>
+        <!-- TRANSCRIPCIÓN Y ESTADO DEL COACH EN VIVO (MODO OÍDO PURO & TAP-TO-TALK SHIELD) -->
+        <div id="live-speech-card" class="live-speech-card" title="Toca aquí en cualquier momento para hablar">
+          <div id="speech-status-pill" class="speech-status-pill">
+            <span>⏳</span> <span>Iniciando sesión...</span>
+          </div>
+          <div class="speech-subtitles-area">
+            <p id="live-transcript-text" class="subtitles-text">Conectando micrófono y coach...</p>
+            <button id="btn-toggle-subtitles" class="btn-subtitles-toggle" type="button" style="display: none;">
+              👁️ Ver subtítulo
+            </button>
+          </div>
         </div>
 
         <!-- BOTONES DE CONTROL DE SESIÓN DE VOZ -->
@@ -157,14 +165,15 @@
         </button>
       </div>
 
-      <!-- SELECTOR DE LAS 3 PESTAÑAS -->
+      <!-- SELECTOR DE LAS 4 PESTAÑAS (INCLUYE TRANSCRIPCIÓN COMPLETA) -->
       <div class="report-tabs">
         <button class="report-tab-btn active" data-tab="grammar">📝 Gramática</button>
         <button class="report-tab-btn" data-tab="vocabulary">📚 Vocabulario & Muletillas</button>
         <button class="report-tab-btn" data-tab="pronunciation">🗣️ Pronunciación</button>
+        <button class="report-tab-btn" data-tab="transcript">📜 Transcripción Completa</button>
       </div>
 
-      <!-- CONTENIDOS DE LAS 3 PESTAÑAS -->
+      <!-- CONTENIDOS DE LAS 4 PESTAÑAS -->
       <div id="tab-content-grammar" class="tab-panel">
         <!-- Renderizado dinámico -->
       </div>
@@ -175,6 +184,10 @@
 
       <div id="tab-content-pronunciation" class="tab-panel" style="display: none;">
         <!-- Renderizado dinámico -->
+      </div>
+
+      <div id="tab-content-transcript" class="tab-panel" style="display: none;">
+        <!-- Renderizado dinámico del diálogo completo turno a turno -->
       </div>
 
       <!-- BOTÓN VOLVER AL HOME -->
@@ -231,14 +244,14 @@
   </div>
 
 
-  <!-- ARCHIVOS JAVASCRIPT MODULARES (VERSIÓN V6 CON SOPORTE SAFARI MULTI-TURNO) -->
-  <script src="./js/config.js?v=6"></script>
-  <script src="./js/curriculum.js?v=6"></script>
-  <script src="./js/audio-vad.js?v=6"></script>
-  <script src="./js/voice-engine-v5.js?v=6"></script>
-  <script src="./js/evaluator-v5.js?v=6"></script>
-  <script src="./js/sync.js?v=6"></script>
-  <script src="./js/app-v5.js?v=6"></script>
+  <!-- ARCHIVOS JAVASCRIPT MODULARES (VERSIÓN V7 - GEMINI TTS & OÍDO PURO) -->
+  <script src="./js/config.js?v=7"></script>
+  <script src="./js/curriculum.js?v=7"></script>
+  <script src="./js/audio-vad.js?v=7"></script>
+  <script src="./js/voice-engine-v7.js?v=7"></script>
+  <script src="./js/evaluator-v5.js?v=7"></script>
+  <script src="./js/sync.js?v=7"></script>
+  <script src="./js/app-v7.js?v=7"></script>
 </body>
 </html>
 
