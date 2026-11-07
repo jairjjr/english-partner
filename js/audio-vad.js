@@ -38,6 +38,15 @@ class AudioVAD {
   async start() {
     await this.requestWakeLock();
     this.isRecording = true;
+
+    // Patrón recomendado W3C: Si la pantalla se bloqueó o cambió de pestaña y regresa, re-adquirir WakeLock
+    this.visibilityHandler = async () => {
+      if (document.visibilityState === 'visible' && this.isRecording) {
+        await this.requestWakeLock();
+      }
+    };
+    document.addEventListener('visibilitychange', this.visibilityHandler);
+
     return true;
   }
 
@@ -45,5 +54,9 @@ class AudioVAD {
     this.isRecording = false;
     this.isPaused = false;
     this.releaseWakeLock();
+    if (this.visibilityHandler) {
+      document.removeEventListener('visibilitychange', this.visibilityHandler);
+      this.visibilityHandler = null;
+    }
   }
 }

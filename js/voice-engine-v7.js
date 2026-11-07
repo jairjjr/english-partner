@@ -22,6 +22,7 @@ class VoiceEngine {
     this.mode = options.mode || 'NORMAL';
     this.maxDurationSeconds = options.maxDurationSeconds || 600;
     this.wrapUpThresholdSeconds = 120;
+    this.silenceDelayMs = options.silenceDelayMs || 2800; // Calibrado para permitir pensar respuestas sin cortes prematuros
 
     this.timerInterval = null;
     this.waveInterval = null;
@@ -307,8 +308,8 @@ class VoiceEngine {
       const display = (this.latestTranscript + (this.interimTranscript ? ` ${this.interimTranscript}` : '')).trim();
       if (display) {
         this.onUserSpeechRecognized(display);
-        // Cuando el usuario pausa por 1.4 segundos, enviar turno automáticamente
-        this.scheduleTurnSubmission(1400);
+        // Ventana de silencio adaptativa (Hold Time) para pensar sin que corte
+        this.scheduleTurnSubmission(this.silenceDelayMs);
       }
     };
 
@@ -382,6 +383,17 @@ class VoiceEngine {
       this.speechFinalizeTimer = null;
       this.commitUserTurn();
     }, delayMs);
+  }
+
+  /**
+   * Envío manual instantáneo del turno (0ms latencia) sin esperar el contador de silencio
+   */
+  commitUserTurnNow() {
+    if (this.speechFinalizeTimer) {
+      clearTimeout(this.speechFinalizeTimer);
+      this.speechFinalizeTimer = null;
+    }
+    this.commitUserTurn();
   }
 
   async commitUserTurn() {

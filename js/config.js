@@ -13,7 +13,17 @@ const Config = {
     LEVEL: 'ep_user_level',
     PLACEMENT_DONE: 'ep_placement_done',
     DRIVE_MODE: 'ep_drive_mode_enabled',
-    VOICE_URI: 'ep_selected_voice_uri'
+    VOICE_URI: 'ep_selected_voice_uri',
+    PAUSE_DELAY: 'ep_pause_delay_ms'
+  },
+
+  getPauseDelay() {
+    const val = localStorage.getItem(this.KEYS.PAUSE_DELAY);
+    return val ? parseInt(val, 10) : 2800;
+  },
+
+  setPauseDelay(ms) {
+    localStorage.setItem(this.KEYS.PAUSE_DELAY, ms.toString());
   },
 
   getApiKey() {

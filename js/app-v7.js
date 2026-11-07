@@ -34,6 +34,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const inputApiKey = document.getElementById('input-api-key');
   const inputGasUrl = document.getElementById('input-gas-url');
   const inputPin = document.getElementById('input-pin');
+  const selectPauseDelay = document.getElementById('select-pause-delay');
 
   const placementBanner = document.getElementById('placement-banner');
   const btnStartPlacement = document.getElementById('btn-start-placement');
@@ -52,6 +53,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const speechStatusPill = document.getElementById('speech-status-pill');
   const liveTranscriptText = document.getElementById('live-transcript-text');
   const btnToggleSubtitles = document.getElementById('btn-toggle-subtitles');
+  const btnSubmitTurn = document.getElementById('btn-submit-turn');
 
   const btnReplayAi = document.getElementById('btn-replay-ai');
   const btnEndSession = document.getElementById('btn-end-session');
@@ -241,6 +243,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
+  // Botón de Envío Inmediato ("🚀 Enviar ahora" sin esperar los 2.8s de silencio)
+  if (btnSubmitTurn) {
+    btnSubmitTurn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (currentVoiceEngine && !currentVoiceEngine.isAiSpeaking && !currentVoiceEngine.isAiResponding) {
+        btnSubmitTurn.style.display = 'none';
+        currentVoiceEngine.commitUserTurnNow();
+      }
+    });
+  }
+
   function updateSubtitlesVisibility() {
     if (!liveTranscriptText) return;
     if (isSubtitlesRevealed) {
@@ -281,6 +294,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     speechStatusPill.innerHTML = `<span>⏳</span> <span>Conectando con Emma...</span>`;
     liveTranscriptText.textContent = 'Iniciando conversación en audio de alta fidelidad...';
     btnToggleSubtitles.style.display = 'none';
+    if (btnSubmitTurn) btnSubmitTurn.style.display = 'none';
     isSubtitlesRevealed = false;
 
     switchView('session');
@@ -291,6 +305,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       apiKey: apiKey,
       mode: Config.isDriveMode() ? 'DRIVE' : 'NORMAL',
       maxDurationSeconds: 600,
+      silenceDelayMs: Config.getPauseDelay(), // Pausa adaptativa (2.8s por defecto)
       onTimerTick: (timeData) => {
         sessionTimerDigits.textContent = timeData.formatted;
       },
@@ -305,6 +320,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         liveTranscriptText.classList.add('revealed');
         liveTranscriptText.innerHTML = `<span style="color: #34d399; font-weight: 700;">🎤 Tú:</span> "${text}"`;
         btnToggleSubtitles.style.display = 'none';
+        if (btnSubmitTurn) btnSubmitTurn.style.display = 'inline-flex';
       },
       onAiResponseStarted: () => {
         liveSpeechCard.className = 'live-speech-card thinking';
@@ -312,6 +328,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         liveTranscriptText.classList.remove('blind-mode');
         liveTranscriptText.textContent = 'Formulando respuesta natural...';
         btnToggleSubtitles.style.display = 'none';
+        if (btnSubmitTurn) btnSubmitTurn.style.display = 'none';
         animateWaveThinking();
       },
       onAiResponseFinished: (aiText) => {
@@ -325,6 +342,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           isSubtitlesRevealed = false;
           updateSubtitlesVisibility();
           btnToggleSubtitles.style.display = 'inline-flex';
+          if (btnSubmitTurn) btnSubmitTurn.style.display = 'none';
         } else if (status === 'listening') {
           liveSpeechCard.className = 'live-speech-card listening';
           speechStatusPill.innerHTML = `<span>🟢</span> <span>TU TURNO: Te escucho</span>`;
@@ -332,10 +350,12 @@ document.addEventListener('DOMContentLoaded', async () => {
           liveTranscriptText.classList.remove('revealed');
           liveTranscriptText.innerHTML = `<span style="color: #94a3b8; font-style: italic;">Habla con naturalidad por tu micrófono o Bluetooth (o toca aquí)...</span>`;
           btnToggleSubtitles.style.display = 'none';
+          if (btnSubmitTurn) btnSubmitTurn.style.display = 'none';
         } else if (status === 'thinking') {
           liveSpeechCard.className = 'live-speech-card thinking';
           speechStatusPill.innerHTML = `<span>⏳</span> <span>Procesando...</span>`;
           btnToggleSubtitles.style.display = 'none';
+          if (btnSubmitTurn) btnSubmitTurn.style.display = 'none';
         }
       },
       onSessionFinished: async (sessionResult) => {
@@ -586,6 +606,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     inputApiKey.value = Config.getApiKey();
     inputGasUrl.value = Config.getGasUrl();
     inputPin.value = Config.getPin();
+    if (selectPauseDelay) {
+      selectPauseDelay.value = Config.getPauseDelay().toString();
+    }
     modalSettings.classList.add('active');
   }
 
@@ -596,16 +619,31 @@ document.addEventListener('DOMContentLoaded', async () => {
     const key = inputApiKey.value.trim();
     const gas = inputGasUrl.value.trim();
     const pin = inputPin.value.trim();
+    const pauseDelay = selectPauseDelay ? parseInt(selectPauseDelay.value, 10) : 2800;
 
     Config.setApiKey(key);
     Config.setGasUrl(gas);
     Config.setPin(pin);
+    Config.setPauseDelay(pauseDelay);
 
     modalSettings.classList.remove('active');
     alert('Configuración guardada correctamente.');
 
     if (gas) {
       await syncWithCloud();
+    }
+  });
+
+  // Auto-Recuperación de Visibilidad: Si la pantalla se bloqueó o cambió de pestaña y regresa
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      console.log('[Visibility] Pantalla activa de nuevo.');
+      if (currentVoiceEngine && currentVoiceEngine.isSessionActive) {
+        // Si el coach no está hablando ni pensando, reactivar micrófono
+        if (!currentVoiceEngine.isAiSpeaking && !currentVoiceEngine.isAiResponding) {
+          currentVoiceEngine.startListeningSafely();
+        }
+      }
     }
   });
 });
