@@ -1,17 +1,17 @@
 // Service Worker para English Partner PWA
-const CACHE_NAME = 'english-partner-v1.0.0';
+const CACHE_NAME = 'english-partner-v1.0.1';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
   './manifest.json',
   './css/styles.css',
-  './js/config.js',
-  './js/curriculum.js',
-  './js/audio-vad.js',
-  './js/voice-engine.js',
-  './js/evaluator.js',
-  './js/sync.js',
-  './js/app.js'
+  './js/config.js?v=2',
+  './js/curriculum.js?v=2',
+  './js/audio-vad.js?v=2',
+  './js/voice-engine.js?v=2',
+  './js/evaluator.js?v=2',
+  './js/sync.js?v=2',
+  './js/app.js?v=2'
 ];
 
 self.addEventListener('install', (event) => {
