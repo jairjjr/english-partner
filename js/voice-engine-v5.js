@@ -1,7 +1,8 @@
 /**
- * Motor Conversacional de Voz en Tiempo Real (English Partner v5 - Safari Safe)
- * Arquitectura Time-Slicing: Alterna estrictamente entre Altavoz y Micrófono
- * para evitar colisiones de CoreAudio / WebKit y erradicar crashes en Safari.
+ * Motor Conversacional de Voz en Tiempo Real (English Partner v5 - Safari Resilient)
+ * 1. Nueva instancia fresca de SpeechRecognition en cada turno (resuelve el bug de WebKit en Safari)
+ * 2. Selección prioritaria de voces neurales de alta fidelidad (Enhanced / Siri / Premium)
+ * 3. Gestión de estado visual claro: 🔴 Emma hablando vs. 🟢 Micrófono activo escuchándote
  */
 
 const VERIFIED_GEMINI_MODELS = [
@@ -35,6 +36,7 @@ class VoiceEngine {
     this.latestTranscript = '';
     this.interimTranscript = '';
     this.speechFinalizeTimer = null;
+    this.micRestartTimer = null;
 
     // Callbacks de UI
     this.onTimerTick = options.onTimerTick || (() => {});
@@ -42,6 +44,7 @@ class VoiceEngine {
     this.onUserSpeechRecognized = options.onUserSpeechRecognized || (() => {});
     this.onAiResponseStarted = options.onAiResponseStarted || (() => {});
     this.onAiResponseFinished = options.onAiResponseFinished || (() => {});
+    this.onStatusChanged = options.onStatusChanged || (() => {}); // 'speaking' | 'listening' | 'thinking'
     this.onSessionFinished = options.onSessionFinished || (() => {});
     this.onError = options.onError || (() => {});
   }
@@ -59,17 +62,14 @@ class VoiceEngine {
     this.latestTranscript = '';
     this.interimTranscript = '';
 
-    // 1. Activar WakeLock para evitar que la pantalla se apague en la camioneta
+    // 1. Activar WakeLock para la pantalla
     this.audioVad = new AudioVAD();
     await this.audioVad.start();
 
-    // 2. Inicializar el motor de reconocimiento de voz sin arrancarlo todavía
-    this.initSpeechRecognition();
-
-    // 3. Iniciar temporizador de 10 minutos
+    // 2. Iniciar temporizador de 10 minutos
     this.startTimer();
 
-    // 4. Saludo inicial hablado de Emma (Altavoz exclusivo)
+    // 3. Saludo inicial hablado de Emma
     const initialText = this.getInitialGreetingText();
     this.history.push({
       role: 'assistant',
@@ -81,7 +81,7 @@ class VoiceEngine {
     this.onAiResponseStarted();
     this.onAiResponseFinished(initialText);
 
-    // Hablar el saludo. Al terminar de hablar, speakText activará el micrófono automáticamente.
+    // Hablar el saludo. Al terminar, activará el micrófono fresco para el usuario
     await this.speakText(initialText);
 
     return true;
@@ -97,24 +97,31 @@ class VoiceEngine {
     return "Hello! I'm ready to begin our conversation practice. How are you doing today?";
   }
 
-  initSpeechRecognition() {
+  /**
+   * Crea una instancia COMPLETAMENTE FRESCA de SpeechRecognition en cada turno
+   * Esto elimina el bug de WebKit en Safari donde reusar el mismo objeto bloquea el segundo turno.
+   */
+  createFreshRecognition() {
+    this.destroyRecognition();
+
     const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRec) {
-      console.warn('[VoiceEngine] Web Speech Recognition no soportada.');
-      return;
+      console.warn('[VoiceEngine] Web Speech Recognition no soportada en este navegador.');
+      return null;
     }
 
-    this.recognition = new SpeechRec();
-    this.recognition.continuous = true;
-    this.recognition.interimResults = true;
-    this.recognition.lang = 'en-US';
+    const rec = new SpeechRec();
+    rec.continuous = false; // Safari maneja turnos individuales mucho más estable en modo no-continuo
+    rec.interimResults = true;
+    rec.lang = 'en-US';
 
-    this.recognition.onstart = () => {
+    rec.onstart = () => {
       this.isListening = true;
+      this.onStatusChanged('listening');
       this.startWaveSimulation(true);
     };
 
-    this.recognition.onresult = (event) => {
+    rec.onresult = (event) => {
       if (this.isAiSpeaking || this.isAiResponding) return;
 
       let interim = '';
@@ -131,44 +138,71 @@ class VoiceEngine {
       const display = (this.latestTranscript + (this.interimTranscript ? ` ${this.interimTranscript}` : '')).trim();
       if (display) {
         this.onUserSpeechRecognized(display);
-        // Cuando el usuario hace una pausa tras hablar, programar el envío del turno
-        this.scheduleTurnSubmission(1500);
+        // Cuando el usuario hace una pausa, enviar el turno
+        this.scheduleTurnSubmission(1600);
       }
     };
 
-    this.recognition.onerror = (event) => {
+    rec.onerror = (event) => {
       if (event.error !== 'no-speech' && event.error !== 'aborted') {
         console.warn('[SpeechRecognition] Estado:', event.error);
       }
     };
 
-    this.recognition.onend = () => {
+    rec.onend = () => {
       this.isListening = false;
       this.startWaveSimulation(false);
-      // Solo reiniciar si la sesión sigue activa y el Coach NO está hablando
+
+      // Si la sesión sigue activa y el Coach no está hablando, mantener la escucha viva
       if (this.isSessionActive && !this.isAiSpeaking && !this.isAiResponding) {
-        setTimeout(() => {
+        this.micRestartTimer = setTimeout(() => {
           this.startListeningSafely();
-        }, 200);
+        }, 300);
       }
     };
+
+    return rec;
+  }
+
+  destroyRecognition() {
+    if (this.micRestartTimer) {
+      clearTimeout(this.micRestartTimer);
+      this.micRestartTimer = null;
+    }
+    if (this.recognition) {
+      try {
+        this.recognition.onstart = null;
+        this.recognition.onresult = null;
+        this.recognition.onerror = null;
+        this.recognition.onend = null;
+        this.recognition.abort();
+      } catch (e) {}
+      this.recognition = null;
+    }
+    this.isListening = false;
   }
 
   startListeningSafely() {
-    if (!this.recognition || !this.isSessionActive || this.isAiSpeaking || this.isAiResponding) return;
+    if (!this.isSessionActive || this.isAiSpeaking || this.isAiResponding) return;
+
+    // Crear una instancia fresca para garantizar que Safari active el micrófono en turnos 2, 3, 4...
+    this.recognition = this.createFreshRecognition();
+    if (!this.recognition) return;
+
     try {
       this.recognition.start();
     } catch (e) {
-      // Ignorar si ya estaba iniciado
+      console.warn('[VoiceEngine] No se pudo arrancar micrófono de inmediato:', e.message);
+      this.micRestartTimer = setTimeout(() => {
+        if (this.isSessionActive && !this.isAiSpeaking && !this.isAiResponding) {
+          this.startListeningSafely();
+        }
+      }, 600);
     }
   }
 
   stopListeningSafely() {
-    if (!this.recognition) return;
-    try {
-      this.recognition.stop();
-    } catch (e) {}
-    this.isListening = false;
+    this.destroyRecognition();
     this.startWaveSimulation(false);
   }
 
@@ -191,7 +225,7 @@ class VoiceEngine {
     this.latestTranscript = '';
     this.interimTranscript = '';
 
-    // Pausar el micrófono antes de llamar a la IA para liberar CoreAudio
+    // Pausar y destruir el micrófono antes de llamar a la IA para liberar CoreAudio por completo
     this.stopListeningSafely();
 
     this.history.push({
@@ -236,6 +270,7 @@ class VoiceEngine {
 
   async generateAiResponse() {
     this.isAiResponding = true;
+    this.onStatusChanged('thinking');
     this.onAiResponseStarted();
 
     try {
@@ -273,7 +308,6 @@ ${wrapUpDirective}
     } catch (err) {
       console.warn('[VoiceEngine] Aviso en respuesta:', err.message);
       this.onError(err);
-      // Reabrir micrófono si hubo error
       this.startListeningSafely();
     } finally {
       this.isAiResponding = false;
@@ -374,8 +408,7 @@ ${wrapUpDirective}
   }
 
   /**
-   * Sintetizador de voz Text-to-Speech (Altavoz Exclusivo)
-   * Asegura que el micrófono esté cerrado mientras habla para no colisionar en Safari.
+   * Sintetizador de voz de alta fidelidad con selección de voces neurales avanzadas
    */
   speakText(text) {
     return new Promise((resolve) => {
@@ -386,7 +419,8 @@ ${wrapUpDirective}
       }
 
       this.isAiSpeaking = true;
-      // Cerrar micrófono mientras habla Emma
+      this.onStatusChanged('speaking');
+      // Cerrar y destruir micrófono mientras Emma habla para que CoreAudio esté 100% libre
       this.stopListeningSafely();
 
       try {
@@ -397,18 +431,15 @@ ${wrapUpDirective}
       const utterance = new SpeechSynthesisUtterance(text);
       this.currentUtterance = utterance;
       utterance.lang = 'en-US';
-      utterance.rate = 1.0;
-      utterance.pitch = 1.0;
+      utterance.rate = 0.94; // Velocidad ligeramente pausada para máxima naturalidad
+      utterance.pitch = 1.02; // Tono cálido
       utterance.volume = 1.0;
 
+      // Priorizar voces neurales de alta resolución (Enhanced, Siri, Premium)
       const voices = window.speechSynthesis.getVoices() || [];
-      const englishVoice = voices.find(v => 
-        v.lang.startsWith('en') &&
-        (v.name.includes('Samantha') || v.name.includes('Google US English') || v.name.includes('Natural') || v.name.includes('Ava') || v.name.includes('Allison') || v.name.includes('Daniel') || v.name.includes('Karen'))
-      ) || voices.find(v => v.lang === 'en-US' || v.lang === 'en_US') || voices.find(v => v.lang.startsWith('en'));
-
-      if (englishVoice) {
-        utterance.voice = englishVoice;
+      const bestVoice = this.pickBestNaturalVoice(voices);
+      if (bestVoice) {
+        utterance.voice = bestVoice;
       }
 
       let finished = false;
@@ -417,16 +448,17 @@ ${wrapUpDirective}
         finished = true;
         clearTimeout(safetyTimer);
         this.isAiSpeaking = false;
-        // Esperar 450ms antes de encender el micrófono para evitar eco
+        
+        // BUFFER DE ORO DE SAFARI: Esperar 650ms tras terminar el audio para que CoreAudio libere el hardware
         setTimeout(() => {
           if (this.isSessionActive && !this.isAiResponding) {
             this.startListeningSafely();
           }
           resolve();
-        }, 450);
+        }, 650);
       };
 
-      const estimatedMs = Math.min(20000, Math.max(6000, text.length * 85));
+      const estimatedMs = Math.min(22000, Math.max(6000, text.length * 85));
       const safetyTimer = setTimeout(finishSpeaking, estimatedMs);
 
       utterance.onend = finishSpeaking;
@@ -440,6 +472,30 @@ ${wrapUpDirective}
     });
   }
 
+  /**
+   * Filtro inteligente para erradicar voces robóticas de 16kHz y priorizar voces neurales
+   */
+  pickBestNaturalVoice(voices) {
+    if (!voices || voices.length === 0) return null;
+
+    // 1. Buscar voces Premium / Enhanced de Apple / Google (Samantha Enhanced, Ava Premium, Siri, Zoe)
+    const tier1 = voices.find(v => 
+      v.lang.startsWith('en') && 
+      (v.name.includes('Enhanced') || v.name.includes('Premium') || v.name.includes('Natural') || v.name.includes('Siri'))
+    );
+    if (tier1) return tier1;
+
+    // 2. Buscar voces estándar con buena prosodia (Samantha, Ava, Allison, Daniel, Karen)
+    const tier2 = voices.find(v => 
+      v.lang.startsWith('en') && 
+      (v.name.includes('Samantha') || v.name.includes('Ava') || v.name.includes('Allison') || v.name.includes('Google US English') || v.name.includes('Daniel') || v.name.includes('Karen') || v.name.includes('Zoe'))
+    );
+    if (tier2) return tier2;
+
+    // 3. Fallback en-US
+    return voices.find(v => v.lang === 'en-US' || v.lang === 'en_US') || voices.find(v => v.lang.startsWith('en')) || null;
+  }
+
   startWaveSimulation(active) {
     if (this.waveInterval) {
       clearInterval(this.waveInterval);
@@ -451,10 +507,10 @@ ${wrapUpDirective}
     }
     this.waveInterval = setInterval(() => {
       if (typeof this.onAudioVolume === 'function') {
-        const simVol = 0.05 + Math.random() * 0.12;
+        const simVol = 0.06 + Math.random() * 0.15;
         this.onAudioVolume(simVol);
       }
-    }, 120);
+    }, 110);
   }
 
   stop(autoFinished = false) {

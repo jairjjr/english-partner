@@ -1,17 +1,17 @@
-// Service Worker para English Partner PWA (v5.0.0 Network-First)
-const CACHE_NAME = 'english-partner-v5.0.0';
+// Service Worker para English Partner PWA (v6.0.0 Network-First)
+const CACHE_NAME = 'english-partner-v6.0.0';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
   './manifest.json',
-  './css/styles.css?v=5',
-  './js/config.js?v=5',
-  './js/curriculum.js?v=5',
-  './js/audio-vad.js?v=5',
-  './js/voice-engine-v5.js',
-  './js/evaluator-v5.js',
-  './js/sync.js?v=5',
-  './js/app-v5.js'
+  './css/styles.css?v=6',
+  './js/config.js?v=6',
+  './js/curriculum.js?v=6',
+  './js/audio-vad.js?v=6',
+  './js/voice-engine-v5.js?v=6',
+  './js/evaluator-v5.js?v=6',
+  './js/sync.js?v=6',
+  './js/app-v5.js?v=6'
 ];
 
 self.addEventListener('install', (event) => {

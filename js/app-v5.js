@@ -1,14 +1,14 @@
 /**
- * Controlador Principal de la Aplicación (English Partner v5)
+ * Controlador Principal de la Aplicación (English Partner v5 - Safari Resilient)
  */
 
 document.addEventListener('DOMContentLoaded', async () => {
   // 1. Registrar y forzar actualización de Service Worker para PWA
   if ('serviceWorker' in navigator) {
     try {
-      const reg = await navigator.serviceWorker.register('./sw.js?v=5');
+      const reg = await navigator.serviceWorker.register('./sw.js?v=6');
       await reg.update();
-      console.log('[PWA] Service Worker actualizado (v5.0.0).');
+      console.log('[PWA] Service Worker actualizado (v6.0.0).');
     } catch (e) {
       console.warn('[PWA] Service Worker:', e);
     }
@@ -68,7 +68,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   updateUserBadge();
   syncWithCloud();
 
-  // Botón para probar la voz de Emma inmediatamente
+  // Botón para probar la voz de Emma con voces neurales
   if (btnTestVoice) {
     btnTestVoice.addEventListener('click', () => {
       testEmmaVoice();
@@ -87,15 +87,22 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const utt = new SpeechSynthesisUtterance("Hi there! I'm Emma, your English speaking coach. Can you hear my voice loud and clear?");
     utt.lang = 'en-US';
-    utt.rate = 0.98;
+    utt.rate = 0.94;
+    utt.pitch = 1.02;
 
     const voices = window.speechSynthesis.getVoices() || [];
     const englishVoice = voices.find(v => 
       v.lang.startsWith('en') &&
-      (v.name.includes('Samantha') || v.name.includes('Google US English') || v.name.includes('Natural') || v.name.includes('Ava') || v.name.includes('Allison') || v.name.includes('Daniel') || v.name.includes('Karen'))
-    ) || voices.find(v => v.lang.startsWith('en'));
+      (v.name.includes('Enhanced') || v.name.includes('Premium') || v.name.includes('Natural') || v.name.includes('Siri'))
+    ) || voices.find(v => 
+      v.lang.startsWith('en') &&
+      (v.name.includes('Samantha') || v.name.includes('Google US English') || v.name.includes('Natural') || v.name.includes('Ava') || v.name.includes('Allison') || v.name.includes('Daniel') || v.name.includes('Karen') || v.name.includes('Zoe'))
+    ) || voices.find(v => v.lang === 'en-US' || v.lang === 'en_US') || voices.find(v => v.lang.startsWith('en'));
 
-    if (englishVoice) utt.voice = englishVoice;
+    if (englishVoice) {
+      utt.voice = englishVoice;
+      console.log('[TTS] Voz activa seleccionada:', englishVoice.name);
+    }
 
     window.speechSynthesis.speak(utt);
   }
@@ -206,7 +213,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     sessionScenarioTitle.textContent = scenario.title;
     sessionTimerDigits.textContent = '10:00';
     wrapUpBanner.classList.remove('visible');
-    liveTranscriptText.textContent = 'Emma comenzará a hablarte en un momento...';
+    liveTranscriptText.innerHTML = '<span style="color: #38bdf8;">Iniciando sesión con Emma...</span>';
     switchView('session');
 
     initWaveBars();
@@ -224,23 +231,38 @@ document.addEventListener('DOMContentLoaded', async () => {
         if ('vibrate' in navigator) navigator.vibrate([150, 100, 150]);
       },
       onUserSpeechRecognized: (text) => {
-        liveTranscriptText.textContent = `Tú: "${text}"`;
+        liveTranscriptText.innerHTML = `<span style="color: #34d399; font-weight: 700;">🎤 Tú:</span> "${text}"`;
       },
       onAiResponseStarted: () => {
-        liveTranscriptText.textContent = `${scenario.aiRole.split(',')[0]} está respondiendo...`;
+        liveTranscriptText.innerHTML = `<span style="color: #fbbf24; font-weight: 700;">⏳ ${scenario.aiRole.split(',')[0]} está pensando...</span>`;
         animateWaveThinking();
       },
       onAiResponseFinished: (aiText) => {
-        liveTranscriptText.textContent = `${scenario.aiRole.split(',')[0]}: "${aiText}"`;
+        liveTranscriptText.innerHTML = `<span style="color: #38bdf8; font-weight: 700;">🗣️ ${scenario.aiRole.split(',')[0]}:</span> "${aiText}"`;
+      },
+      onStatusChanged: (status) => {
+        if (status === 'listening') {
+          liveTranscriptText.innerHTML = `<span style="color: #34d399; font-weight: 700;">🟢 Tu Turno: Te escucho...</span> (Habla con naturalidad o toca aquí)`;
+        } else if (status === 'speaking') {
+          liveTranscriptText.innerHTML = `<span style="color: #38bdf8; font-weight: 700;">🔴 Emma está hablando...</span>`;
+        }
       },
       onSessionFinished: async (sessionResult) => {
         await handleSessionCompleted(sessionResult);
       },
       onError: (err) => {
         console.warn('[Session] Aviso:', err.message);
-        liveTranscriptText.textContent = `⚠️ ${err.message}`;
+        liveTranscriptText.innerHTML = `<span style="color: #f87171;">⚠️ ${err.message}</span>`;
       }
     });
+
+    // Permitir tocar la tarjeta para forzar reactivación del micrófono si Safari pausa
+    liveTranscriptText.style.cursor = 'pointer';
+    liveTranscriptText.onclick = () => {
+      if (currentVoiceEngine && !currentVoiceEngine.isAiSpeaking) {
+        currentVoiceEngine.startListeningSafely();
+      }
+    };
 
     currentVoiceEngine.onAudioVolume = (vol) => {
       updateWaveBars(vol);
@@ -473,4 +495,3 @@ document.addEventListener('DOMContentLoaded', async () => {
     await syncWithCloud();
   });
 });
-
