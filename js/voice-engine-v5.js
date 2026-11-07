@@ -1,9 +1,7 @@
 /**
- * Motor Conversacional de Voz en Tiempo Real (English Partner v5)
- * Utiliza los endpoints oficiales universales de Google AI Studio:
- * 1. gemini-flash-lite-latest (Gemini 3.5 Flash-Lite: ultra rápido para conversación)
- * 2. gemini-flash-latest      (Gemini 3.8 Flash: respaldo)
- * 3. gemini-pro-latest        (Gemini 3.1 Pro: razonamiento avanzado)
+ * Motor Conversacional de Voz en Tiempo Real (English Partner v5 - Safari Safe)
+ * Arquitectura Time-Slicing: Alterna estrictamente entre Altavoz y Micrófono
+ * para evitar colisiones de CoreAudio / WebKit y erradicar crashes en Safari.
  */
 
 const VERIFIED_GEMINI_MODELS = [
@@ -21,12 +19,14 @@ class VoiceEngine {
     this.wrapUpThresholdSeconds = 120;
 
     this.timerInterval = null;
+    this.waveInterval = null;
     this.elapsedSeconds = 0;
     this.history = [];
     this.isSessionActive = false;
     this.hasWrapUpCued = false;
     this.isAiResponding = false;
     this.isAiSpeaking = false;
+    this.isListening = false;
     this.lastAiText = '';
     this.currentUtterance = null;
 
@@ -35,8 +35,6 @@ class VoiceEngine {
     this.latestTranscript = '';
     this.interimTranscript = '';
     this.speechFinalizeTimer = null;
-    this.lastRecordedAudioUrl = null;
-    this.lastRecordedAudioBlob = null;
 
     // Callbacks de UI
     this.onTimerTick = options.onTimerTick || (() => {});
@@ -61,7 +59,17 @@ class VoiceEngine {
     this.latestTranscript = '';
     this.interimTranscript = '';
 
-    // 1. Saludo inicial instantáneo (CERO llamadas de red al arrancar, CERO posibilidad de 503)
+    // 1. Activar WakeLock para evitar que la pantalla se apague en la camioneta
+    this.audioVad = new AudioVAD();
+    await this.audioVad.start();
+
+    // 2. Inicializar el motor de reconocimiento de voz sin arrancarlo todavía
+    this.initSpeechRecognition();
+
+    // 3. Iniciar temporizador de 10 minutos
+    this.startTimer();
+
+    // 4. Saludo inicial hablado de Emma (Altavoz exclusivo)
     const initialText = this.getInitialGreetingText();
     this.history.push({
       role: 'assistant',
@@ -69,46 +77,12 @@ class VoiceEngine {
       timestamp: 0
     });
     this.lastAiText = initialText;
+
     this.onAiResponseStarted();
     this.onAiResponseFinished(initialText);
 
-    // Reproducir la voz de Emma inmediatamente con el clic del usuario
+    // Hablar el saludo. Al terminar de hablar, speakText activará el micrófono automáticamente.
     await this.speakText(initialText);
-
-    // 2. Iniciar Audio VAD para ondas y grabación de pronunciación
-    this.audioVad = new AudioVAD({
-      onSpeechStart: () => {
-        if (!this.isAiSpeaking && !this.isAiResponding) {
-          if (this.speechFinalizeTimer) {
-            clearTimeout(this.speechFinalizeTimer);
-            this.speechFinalizeTimer = null;
-          }
-        }
-      },
-      onSpeechEnd: (audioBlob, audioUrl) => {
-        if (this.isAiSpeaking || this.isAiResponding) return;
-        this.lastRecordedAudioBlob = audioBlob;
-        this.lastRecordedAudioUrl = audioUrl;
-        this.scheduleTurnSubmission(400);
-      },
-      onAudioVolume: (level) => {
-        if (typeof this.onAudioVolume === 'function') {
-          this.onAudioVolume(level);
-        }
-      },
-      onError: (err) => console.warn('[AudioVAD] Aviso:', err)
-    });
-
-    const micOk = await this.audioVad.start();
-    if (!micOk) {
-      console.warn('[VoiceEngine] Micrófono no iniciado, continuando en modo escucha.');
-    }
-
-    // 3. Iniciar reconocimiento nativo de voz
-    this.initSpeechRecognition();
-
-    // 4. Iniciar temporizador de 10 minutos
-    this.startTimer();
 
     return true;
   }
@@ -126,7 +100,7 @@ class VoiceEngine {
   initSpeechRecognition() {
     const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRec) {
-      console.warn('[VoiceEngine] Web Speech API no soportada en este navegador.');
+      console.warn('[VoiceEngine] Web Speech Recognition no soportada.');
       return;
     }
 
@@ -135,8 +109,12 @@ class VoiceEngine {
     this.recognition.interimResults = true;
     this.recognition.lang = 'en-US';
 
+    this.recognition.onstart = () => {
+      this.isListening = true;
+      this.startWaveSimulation(true);
+    };
+
     this.recognition.onresult = (event) => {
-      // Ignorar entrada mientras Emma habla para evitar eco
       if (this.isAiSpeaking || this.isAiResponding) return;
 
       let interim = '';
@@ -153,7 +131,8 @@ class VoiceEngine {
       const display = (this.latestTranscript + (this.interimTranscript ? ` ${this.interimTranscript}` : '')).trim();
       if (display) {
         this.onUserSpeechRecognized(display);
-        this.scheduleTurnSubmission(1600);
+        // Cuando el usuario hace una pausa tras hablar, programar el envío del turno
+        this.scheduleTurnSubmission(1500);
       }
     };
 
@@ -164,14 +143,33 @@ class VoiceEngine {
     };
 
     this.recognition.onend = () => {
-      if (this.isSessionActive) {
-        try { this.recognition.start(); } catch (e) {}
+      this.isListening = false;
+      this.startWaveSimulation(false);
+      // Solo reiniciar si la sesión sigue activa y el Coach NO está hablando
+      if (this.isSessionActive && !this.isAiSpeaking && !this.isAiResponding) {
+        setTimeout(() => {
+          this.startListeningSafely();
+        }, 200);
       }
     };
+  }
 
+  startListeningSafely() {
+    if (!this.recognition || !this.isSessionActive || this.isAiSpeaking || this.isAiResponding) return;
     try {
       this.recognition.start();
+    } catch (e) {
+      // Ignorar si ya estaba iniciado
+    }
+  }
+
+  stopListeningSafely() {
+    if (!this.recognition) return;
+    try {
+      this.recognition.stop();
     } catch (e) {}
+    this.isListening = false;
+    this.startWaveSimulation(false);
   }
 
   scheduleTurnSubmission(delayMs) {
@@ -193,17 +191,13 @@ class VoiceEngine {
     this.latestTranscript = '';
     this.interimTranscript = '';
 
-    const audioBlob = this.lastRecordedAudioBlob;
-    const audioUrl = this.lastRecordedAudioUrl;
-    this.lastRecordedAudioBlob = null;
-    this.lastRecordedAudioUrl = null;
+    // Pausar el micrófono antes de llamar a la IA para liberar CoreAudio
+    this.stopListeningSafely();
 
     this.history.push({
       role: 'user',
       text: fullUserText,
-      timestamp: this.elapsedSeconds,
-      audioBlob: audioBlob,
-      audioUrl: audioUrl
+      timestamp: this.elapsedSeconds
     });
 
     await this.generateAiResponse();
@@ -242,7 +236,6 @@ class VoiceEngine {
 
   async generateAiResponse() {
     this.isAiResponding = true;
-    if (this.audioVad) this.audioVad.isPaused = true;
     this.onAiResponseStarted();
 
     try {
@@ -278,9 +271,10 @@ ${wrapUpDirective}
       this.onAiResponseFinished(aiText);
       await this.speakText(aiText);
     } catch (err) {
-      console.warn('[VoiceEngine] Aviso en turno:', err.message);
+      console.warn('[VoiceEngine] Aviso en respuesta:', err.message);
       this.onError(err);
-      if (this.audioVad) this.audioVad.isPaused = false;
+      // Reabrir micrófono si hubo error
+      this.startListeningSafely();
     } finally {
       this.isAiResponding = false;
     }
@@ -380,27 +374,24 @@ ${wrapUpDirective}
   }
 
   /**
-   * Sintetizador de voz de alta fidelidad con desbloqueo para macOS, iOS y Android
+   * Sintetizador de voz Text-to-Speech (Altavoz Exclusivo)
+   * Asegura que el micrófono esté cerrado mientras habla para no colisionar en Safari.
    */
   speakText(text) {
-    return new Promise(async (resolve) => {
+    return new Promise((resolve) => {
       if (!window.speechSynthesis || !text) {
-        if (this.audioVad) this.audioVad.isPaused = false;
+        this.startListeningSafely();
         resolve();
         return;
       }
 
       this.isAiSpeaking = true;
-      if (this.audioVad) this.audioVad.isPaused = true;
+      // Cerrar micrófono mientras habla Emma
+      this.stopListeningSafely();
 
       try {
-        if (window.speechSynthesis.paused) {
-          window.speechSynthesis.resume();
-        }
-        if (window.speechSynthesis.speaking) {
-          window.speechSynthesis.cancel();
-          await new Promise(r => setTimeout(r, 50));
-        }
+        if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+        window.speechSynthesis.cancel();
       } catch (e) {}
 
       const utterance = new SpeechSynthesisUtterance(text);
@@ -410,7 +401,6 @@ ${wrapUpDirective}
       utterance.pitch = 1.0;
       utterance.volume = 1.0;
 
-      // Selección robusta de voz en inglés
       const voices = window.speechSynthesis.getVoices() || [];
       const englishVoice = voices.find(v => 
         v.lang.startsWith('en') &&
@@ -426,33 +416,45 @@ ${wrapUpDirective}
         if (finished) return;
         finished = true;
         clearTimeout(safetyTimer);
+        this.isAiSpeaking = false;
+        // Esperar 450ms antes de encender el micrófono para evitar eco
         setTimeout(() => {
-          this.isAiSpeaking = false;
-          this.latestTranscript = '';
-          this.interimTranscript = '';
-          if (this.audioVad) this.audioVad.isPaused = false;
+          if (this.isSessionActive && !this.isAiResponding) {
+            this.startListeningSafely();
+          }
           resolve();
-        }, 300);
+        }, 450);
       };
 
-      const estimatedMs = Math.min(22000, Math.max(7000, text.length * 90));
+      const estimatedMs = Math.min(20000, Math.max(6000, text.length * 85));
       const safetyTimer = setTimeout(finishSpeaking, estimatedMs);
 
       utterance.onend = finishSpeaking;
-      utterance.onerror = (e) => {
-        console.warn('[SpeechSynthesis] Aviso:', e.error || e);
-        finishSpeaking();
-      };
+      utterance.onerror = () => finishSpeaking();
 
       try {
         window.speechSynthesis.speak(utterance);
-        if (window.speechSynthesis.paused) {
-          window.speechSynthesis.resume();
-        }
       } catch (e) {
         finishSpeaking();
       }
     });
+  }
+
+  startWaveSimulation(active) {
+    if (this.waveInterval) {
+      clearInterval(this.waveInterval);
+      this.waveInterval = null;
+    }
+    if (!active) {
+      if (typeof this.onAudioVolume === 'function') this.onAudioVolume(0.02);
+      return;
+    }
+    this.waveInterval = setInterval(() => {
+      if (typeof this.onAudioVolume === 'function') {
+        const simVol = 0.05 + Math.random() * 0.12;
+        this.onAudioVolume(simVol);
+      }
+    }, 120);
   }
 
   stop(autoFinished = false) {
@@ -467,12 +469,15 @@ ${wrapUpDirective}
       this.speechFinalizeTimer = null;
     }
 
+    if (this.waveInterval) {
+      clearInterval(this.waveInterval);
+      this.waveInterval = null;
+    }
+
     clearInterval(this.timerInterval);
     this.timerInterval = null;
 
-    if (this.recognition) {
-      try { this.recognition.stop(); } catch (e) {}
-    }
+    this.stopListeningSafely();
 
     if (this.audioVad) {
       this.audioVad.stop();
@@ -488,4 +493,3 @@ ${wrapUpDirective}
     });
   }
 }
-
