@@ -1,25 +1,23 @@
-// Service Worker para English Partner PWA (Estrategia Network-First con Respaldo Offline)
-const CACHE_NAME = 'english-partner-v4.0.0';
+// Service Worker para English Partner PWA (v5.0.0 Network-First)
+const CACHE_NAME = 'english-partner-v5.0.0';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
   './manifest.json',
-  './css/styles.css?v=4',
-  './js/config.js?v=4',
-  './js/curriculum.js?v=4',
-  './js/audio-vad.js?v=4',
-  './js/voice-engine.js?v=4',
-  './js/evaluator.js?v=4',
-  './js/sync.js?v=4',
-  './js/app.js?v=4'
+  './css/styles.css?v=5',
+  './js/config.js?v=5',
+  './js/curriculum.js?v=5',
+  './js/audio-vad.js?v=5',
+  './js/voice-engine-v5.js',
+  './js/evaluator-v5.js',
+  './js/sync.js?v=5',
+  './js/app-v5.js'
 ];
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(ASSETS_TO_CACHE);
-    })
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS_TO_CACHE))
   );
 });
 
@@ -38,7 +36,6 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Las llamadas a APIs externas (Gemini / Google Apps Script) van directo a la red
   if (
     event.request.url.includes('generativelanguage.googleapis.com') ||
     event.request.url.includes('script.google.com')
@@ -46,8 +43,6 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Estrategia Network-First: siempre intenta descargar la versión más reciente de GitHub Pages
-  // y si no hay señal celular en la camioneta, usa la copia guardada en caché.
   event.respondWith(
     fetch(event.request)
       .then((networkResponse) => {
@@ -61,9 +56,7 @@ self.addEventListener('fetch', (event) => {
       })
       .catch(() => {
         return caches.match(event.request).then((cachedResponse) => {
-          if (cachedResponse) {
-            return cachedResponse;
-          }
+          if (cachedResponse) return cachedResponse;
           if (event.request.destination === 'document') {
             return caches.match('./index.html');
           }

@@ -47,9 +47,14 @@
             Conversa 7-10 minutos con Emma. Te hará preguntas adaptativas para diagnosticar tu nivel real (A2, B1, B2 o C1) y calibrar tu plan.
           </p>
         </div>
-        <button id="btn-start-placement" class="btn-primary" style="white-space: nowrap;">
-          🚀 Iniciar Examen
-        </button>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <button id="btn-test-voice" class="btn-primary" style="background: var(--bg-card); border: 1px solid var(--accent); white-space: nowrap;">
+            🔊 Probar Voz
+          </button>
+          <button id="btn-start-placement" class="btn-primary" style="white-space: nowrap;">
+            🚀 Iniciar Examen
+          </button>
+        </div>
       </div>
 
       <!-- FILTRO DE CATEGORÍAS -->
@@ -226,14 +231,14 @@
   </div>
 
 
-  <!-- ARCHIVOS JAVASCRIPT MODULARES (CON CACHE-BUSTING V4) -->
-  <script src="./js/config.js?v=4"></script>
-  <script src="./js/curriculum.js?v=4"></script>
-  <script src="./js/audio-vad.js?v=4"></script>
-  <script src="./js/voice-engine.js?v=4"></script>
-  <script src="./js/evaluator.js?v=4"></script>
-  <script src="./js/sync.js?v=4"></script>
-  <script src="./js/app.js?v=4"></script>
+  <!-- ARCHIVOS JAVASCRIPT MODULARES (VERSIÓN DEFINITIVA V5) -->
+  <script src="./js/config.js?v=5"></script>
+  <script src="./js/curriculum.js?v=5"></script>
+  <script src="./js/audio-vad.js?v=5"></script>
+  <script src="./js/voice-engine-v5.js"></script>
+  <script src="./js/evaluator-v5.js"></script>
+  <script src="./js/sync.js?v=5"></script>
+  <script src="./js/app-v5.js"></script>
 </body>
 </html>
 
