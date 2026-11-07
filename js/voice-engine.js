@@ -1,8 +1,18 @@
 /**
  * Motor Conversacional de Voz en Tiempo Real (English Partner)
- * Maneja el diálogo por turnos, temporizador de 10 minutos, aviso del minuto 8:00
- * y síntesis de voz natural.
+ * Maneja el diálogo por turnos, temporizador de 10 minutos, aviso del minuto 8:00,
+ * aislamiento anti-eco y síntesis de voz natural con modelos oficiales Gemini 3.
  */
+
+// Modelos oficiales verificados en Google AI Studio (Familia Gemini 3):
+// 1. gemini-3.5-flash-lite  -> "3.5 Flash-Lite: Respuestas más rápidas" (Primario para voz en vivo)
+// 2. gemini-3.8-flash       -> "3.8 Flash: Asistencia general" (Respaldo inmediato)
+// 3. gemini-3.1-pro-preview -> "3.1 Pro: Razonamiento avanzado" (Respaldo secundario)
+const GEMINI_VOICE_MODELS = [
+  'gemini-3.5-flash-lite',
+  'gemini-3.8-flash',
+  'gemini-3.1-pro-preview'
+];
 
 class VoiceEngine {
   constructor(options = {}) {
@@ -14,14 +24,21 @@ class VoiceEngine {
 
     this.timerInterval = null;
     this.elapsedSeconds = 0;
-    this.history = []; // Historial de turnos { role, text, timestamp, audioUrl }
+    this.history = []; // Historial de turnos { role: 'user'|'assistant', text, timestamp, audioUrl }
     this.isSessionActive = false;
     this.hasWrapUpCued = false;
     this.isAiResponding = false;
+    this.isAiSpeaking = false;
+    this.lastAiText = '';
+    this.currentUtterance = null; // Referencia viva para evitar Garbage Collection del navegador
 
     this.audioVad = null;
     this.recognition = null;
     this.latestTranscript = '';
+    this.interimTranscript = '';
+    this.speechFinalizeTimer = null;
+    this.lastRecordedAudioUrl = null;
+    this.lastRecordedAudioBlob = null;
 
     // Callbacks de UI
     this.onTimerTick = options.onTimerTick || (() => {});
@@ -34,11 +51,11 @@ class VoiceEngine {
   }
 
   /**
-   * Inicializa la sesión y arranca el temporizador y el reconocimiento de voz
+   * Inicializa la sesión, desbloquea el sintetizador de voz, arranca el micrófono y saluda
    */
   async start() {
     if (!this.apiKey) {
-      this.onError(new Error('Falta la API Key de Gemini. Configúrala en el menú de ajustes.'));
+      this.onError(new Error('Falta la API Key de Gemini. Configúrala en el menú de ajustes ⚙️.'));
       return false;
     }
 
@@ -46,21 +63,29 @@ class VoiceEngine {
     this.elapsedSeconds = 0;
     this.history = [];
     this.hasWrapUpCued = false;
+    this.latestTranscript = '';
+    this.interimTranscript = '';
 
-    // 1. Iniciar SpeechRecognition nativo del navegador
-    this.initSpeechRecognition();
+    // Precargar las voces del navegador en el gesto de clic del usuario
+    await this.ensureVoicesLoaded();
 
-    // 2. Iniciar Audio VAD para detección manos libres y grabación de fragmentos
+    // 1. Iniciar Audio VAD para visualizar ondas y grabar fragmentos de pronunciación
     this.audioVad = new AudioVAD({
       onSpeechStart: () => {
-        if (this.isAiResponding) {
-          // Si el usuario interrumpe, detener la voz de la IA
-          window.speechSynthesis.cancel();
-          this.isAiResponding = false;
+        // Solo registrar inicio si el Coach NO está hablando
+        if (!this.isAiSpeaking && !this.isAiResponding) {
+          if (this.speechFinalizeTimer) {
+            clearTimeout(this.speechFinalizeTimer);
+            this.speechFinalizeTimer = null;
+          }
         }
       },
-      onSpeechEnd: (audioBlob, audioUrl, duration) => {
-        this.handleUserTurnCompleted(audioBlob, audioUrl);
+      onSpeechEnd: (audioBlob, audioUrl) => {
+        if (this.isAiSpeaking || this.isAiResponding) return;
+        this.lastRecordedAudioBlob = audioBlob;
+        this.lastRecordedAudioUrl = audioUrl;
+        // Esperar 400ms para que SpeechRecognition termine de volcar las últimas palabras
+        this.scheduleTurnSubmission(400);
       },
       onAudioVolume: (level) => {
         if (typeof this.onAudioVolume === 'function') {
@@ -70,16 +95,51 @@ class VoiceEngine {
       onError: (err) => this.onError(err)
     });
 
+    // Pausar el VAD antes del saludo inicial para que el micrófono no escuche a Emma
+    this.audioVad.isPaused = true;
     const micOk = await this.audioVad.start();
     if (!micOk) return false;
+
+    // 2. Iniciar SpeechRecognition nativo del navegador
+    this.initSpeechRecognition();
 
     // 3. Iniciar temporizador regresivo de 10 minutos
     this.startTimer();
 
-    // 4. Saludo inicial del personaje del escenario
+    // 4. Saludo inicial hablado del personaje del escenario
     await this.sendInitialGreeting();
 
     return true;
+  }
+
+  /**
+   * Garantiza que las voces del sistema estén cargadas antes de pronunciar la primera frase
+   */
+  ensureVoicesLoaded() {
+    return new Promise((resolve) => {
+      if (!window.speechSynthesis) {
+        resolve([]);
+        return;
+      }
+      const voices = window.speechSynthesis.getVoices();
+      if (voices && voices.length > 0) {
+        resolve(voices);
+        return;
+      }
+      let resolved = false;
+      window.speechSynthesis.onvoiceschanged = () => {
+        if (!resolved) {
+          resolved = true;
+          resolve(window.speechSynthesis.getVoices());
+        }
+      };
+      setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          resolve(window.speechSynthesis.getVoices() || []);
+        }
+      }, 800);
+    });
   }
 
   initSpeechRecognition() {
@@ -95,20 +155,34 @@ class VoiceEngine {
     this.recognition.lang = 'en-US';
 
     this.recognition.onresult = (event) => {
+      // Mientras el Coach está hablando o pensando, ignorar el micrófono para no transcribir el eco de las bocinas
+      if (this.isAiSpeaking || this.isAiResponding) {
+        return;
+      }
+
       let interim = '';
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const transcript = event.results[i][0].transcript;
         if (event.results[i].isFinal) {
-          this.latestTranscript += ' ' + transcript;
+          this.latestTranscript = (this.latestTranscript + ' ' + transcript).trim();
         } else {
           interim += transcript;
         }
       }
-      this.onUserSpeechRecognized(this.latestTranscript + (interim ? ` (${interim})` : ''));
+      this.interimTranscript = interim.trim();
+
+      const display = (this.latestTranscript + (this.interimTranscript ? ` ${this.interimTranscript}` : '')).trim();
+      if (display) {
+        this.onUserSpeechRecognized(display);
+        // Temporizador de respaldo: si el usuario hace una pausa de 1.7 segundos después de dictar, enviar turno
+        this.scheduleTurnSubmission(1700);
+      }
     };
 
     this.recognition.onerror = (event) => {
-      console.warn('[SpeechRecognition] Evento de error:', event.error);
+      if (event.error !== 'no-speech' && event.error !== 'aborted') {
+        console.warn('[SpeechRecognition] Aviso:', event.error);
+      }
     };
 
     this.recognition.onend = () => {
@@ -122,6 +196,47 @@ class VoiceEngine {
     } catch (e) {
       console.warn('[SpeechRecognition] No se pudo arrancar de inmediato:', e);
     }
+  }
+
+  /**
+   * Programa el envío del turno del usuario una vez que concluye su frase
+   */
+  scheduleTurnSubmission(delayMs) {
+    if (this.speechFinalizeTimer) {
+      clearTimeout(this.speechFinalizeTimer);
+    }
+    this.speechFinalizeTimer = setTimeout(() => {
+      this.speechFinalizeTimer = null;
+      this.commitUserTurn();
+    }, delayMs);
+  }
+
+  async commitUserTurn() {
+    if (!this.isSessionActive || this.isAiResponding || this.isAiSpeaking) return;
+
+    const fullUserText = (this.latestTranscript + ' ' + this.interimTranscript).trim();
+    // Si no se dictaron palabras reales (solo fue ruido ambiente), no enviar petición vacía a Gemini
+    if (fullUserText.length < 2) {
+      return;
+    }
+
+    this.latestTranscript = '';
+    this.interimTranscript = '';
+
+    const audioBlob = this.lastRecordedAudioBlob;
+    const audioUrl = this.lastRecordedAudioUrl;
+    this.lastRecordedAudioBlob = null;
+    this.lastRecordedAudioUrl = null;
+
+    this.history.push({
+      role: 'user',
+      text: fullUserText,
+      timestamp: this.elapsedSeconds,
+      audioBlob: audioBlob,
+      audioUrl: audioUrl
+    });
+
+    await this.generateAiResponse();
   }
 
   startTimer() {
@@ -158,64 +273,40 @@ class VoiceEngine {
   }
 
   /**
-   * Saludo inicial del personaje para romper el hielo según el escenario
+   * Saludo inicial del personaje para romper el hielo de forma instantánea
    */
   async sendInitialGreeting() {
-    const isPlacement = this.scenario.id === 'placement_test';
-    let prompt = '';
+    let greetingText = this.scenario.initialGreeting;
 
-    if (isPlacement) {
-      prompt = `You are Emma, welcoming the user to their initial English speaking diagnostic test. Greet them warmly in 2 short, friendly sentences. Ask their name and how they are feeling today.`;
-    } else {
-      prompt = `
-Context: You are ${this.scenario.aiRole}. 
-Scenario: ${this.scenario.scenarioContext}. 
-The user is playing the role of: ${this.scenario.userRole}.
-Start the conversation with an engaging opening line (1 to 2 short sentences). Do not break character. Do not give meta instructions. Speak directly to them.
-`;
+    if (!greetingText) {
+      if (this.scenario.id === 'placement_test') {
+        greetingText = "Hello! I'm Emma, your English speaking coach. I'm excited to practice with you today! To get started, could you tell me a little bit about yourself, where you're from, and how your day is going?";
+      } else {
+        greetingText = `Hello! Welcome to this session. I'm ready to begin our scenario as ${this.scenario.aiRole.split(',')[0]}. How are you doing today?`;
+      }
     }
 
     try {
-      this.onAiResponseStarted();
-      const greetingText = await this.callGeminiRaw(prompt, []);
+      this.isAiResponding = true;
+      this.lastAiText = greetingText;
       this.history.push({
         role: 'assistant',
         text: greetingText,
-        timestamp: this.elapsedSeconds
+        timestamp: 0
       });
+      this.onAiResponseStarted();
       this.onAiResponseFinished(greetingText);
       await this.speakText(greetingText);
     } catch (err) {
-      this.onError(err);
+      console.warn('[VoiceEngine] Error en saludo inicial:', err);
+    } finally {
+      this.isAiResponding = false;
     }
-  }
-
-  /**
-   * Procesa el turno completado del usuario
-   */
-  async handleUserTurnCompleted(audioBlob, audioUrl) {
-    if (!this.isSessionActive || this.isAiResponding) return;
-
-    const userText = (this.latestTranscript || '').trim();
-    this.latestTranscript = '';
-
-    // Si no hubo texto reconocido por el navegador (ej. si el usuario habló en voz baja), no romper
-    const textToRecord = userText || '(Audio recorded - speaking in English)';
-
-    this.history.push({
-      role: 'user',
-      text: textToRecord,
-      timestamp: this.elapsedSeconds,
-      audioBlob: audioBlob,
-      audioUrl: audioUrl
-    });
-
-    // Solicitar respuesta de Gemini
-    await this.generateAiResponse();
   }
 
   async generateAiResponse() {
     this.isAiResponding = true;
+    if (this.audioVad) this.audioVad.isPaused = true;
     this.onAiResponseStarted();
 
     try {
@@ -241,7 +332,8 @@ ${wrapUpDirective}
 `;
 
       const aiText = await this.callGeminiWithHistory(systemInstruction, this.history);
-      
+      this.lastAiText = aiText;
+
       this.history.push({
         role: 'assistant',
         text: aiText,
@@ -253,96 +345,209 @@ ${wrapUpDirective}
     } catch (err) {
       console.error('[VoiceEngine] Error al generar respuesta de IA:', err);
       this.onError(err);
+      if (this.audioVad) this.audioVad.isPaused = false;
     } finally {
       this.isAiResponding = false;
     }
   }
 
   /**
-   * Llamada a Gemini con el historial de la conversación
+   * Construye un arreglo contents 100% válido para Gemini API:
+   * - Siempre inicia con role: 'user'
+   * - Alterna estrictamente 'user' <-> 'model'
+   */
+  buildValidGeminiContents(history) {
+    const normalized = [];
+
+    for (const item of history) {
+      const geminiRole = item.role === 'assistant' ? 'model' : 'user';
+      const cleanText = (item.text || '').trim();
+      if (!cleanText) continue;
+
+      // Si el primer mensaje de la historia es del 'model' (el saludo inicial),
+      // insertamos el disparador de inicio del usuario para cumplir el contrato de Gemini API
+      if (normalized.length === 0 && geminiRole === 'model') {
+        normalized.push({
+          role: 'user',
+          parts: [{ text: "Hi, I'm ready to start our English conversation session." }]
+        });
+      }
+
+      // Si hay dos turnos seguidos del mismo rol, fusionarlos para mantener alternancia estricta
+      if (normalized.length > 0 && normalized[normalized.length - 1].role === geminiRole) {
+        normalized[normalized.length - 1].parts[0].text += '\n' + cleanText;
+      } else {
+        normalized.push({
+          role: geminiRole,
+          parts: [{ text: cleanText }]
+        });
+      }
+    }
+
+    // Garantizar que el último mensaje enviado sea de 'user'
+    if (normalized.length === 0 || normalized[normalized.length - 1].role !== 'user') {
+      normalized.push({
+        role: 'user',
+        parts: [{ text: 'Hello!' }]
+      });
+    }
+
+    return normalized;
+  }
+
+  /**
+   * Llamada a Gemini con el historial de la conversación y fallback entre modelos Gemini 3
    */
   async callGeminiWithHistory(systemInstruction, history) {
-    const contents = history.map(item => ({
-      role: item.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: item.text }]
-    }));
+    const contents = this.buildValidGeminiContents(history);
 
-    // Inyectar system instruction
     const payload = {
       system_instruction: {
         parts: [{ text: systemInstruction }]
       },
       contents: contents,
       generationConfig: {
-        temperature: 0.8,
-        maxOutputTokens: 150
+        temperature: 0.75,
+        maxOutputTokens: 160
       }
     };
 
-    // Usamos gemini-3.8-flash como modelo conversacional rápido
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${this.apiKey}`;
-    
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-
-    if (!response.ok) {
-      const errBody = await response.text();
-      throw new Error(`Gemini API Error (${response.status}): ${errBody}`);
-    }
-
-    const data = await response.json();
-    return data.candidates[0].content.parts[0].text.trim();
+    return await this.requestGeminiWithFallback(payload);
   }
 
-  async callGeminiRaw(prompt, history) {
-    const payload = {
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.8, maxOutputTokens: 120 }
-    };
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${this.apiKey}`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    if (!response.ok) throw new Error(await response.text());
-    const data = await response.json();
-    return data.candidates[0].content.parts[0].text.trim();
+  /**
+   * Ejecuta la petición usando gemini-3.5-flash-lite como primario ("Respuestas más rápidas")
+   * y fallback automático a gemini-3.8-flash y gemini-3.1-pro-preview si hay saturación 503/429.
+   */
+  async requestGeminiWithFallback(payload) {
+    let lastError = null;
+
+    // 2 rondas de intento con espera exponencial corta en caso de pico 503
+    for (let attempt = 0; attempt < 2; attempt++) {
+      for (const model of GEMINI_VOICE_MODELS) {
+        try {
+          const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${this.apiKey}`;
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+
+          if (response.status === 503 || response.status === 429) {
+            console.warn(`[VoiceEngine] Modelo ${model} con alta demanda (${response.status}). Conmutando al siguiente modelo...`);
+            await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
+            continue;
+          }
+
+          if (!response.ok) {
+            const errBody = await response.text();
+            throw new Error(`Gemini API (${model} - ${response.status}): ${errBody}`);
+          }
+
+          const data = await response.json();
+          if (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts[0]) {
+            return data.candidates[0].content.parts[0].text.trim();
+          }
+        } catch (err) {
+          lastError = err;
+          console.warn(`[VoiceEngine] Intento fallido en ${model}:`, err.message);
+        }
+      }
+    }
+
+    throw lastError || new Error('Los servidores de voz de Gemini tienen alta demanda en este segundo. Habla de nuevo para continuar.');
+  }
+
+  /**
+   * Permite repetir en voz alta la última frase del Coach cuando el usuario lo solicite
+   */
+  async replayLastAiMessage() {
+    if (this.lastAiText) {
+      await this.speakText(this.lastAiText);
+    }
   }
 
   /**
    * Sintetizador de voz Text-to-Speech usando Web Speech API
+   * Aísla el micrófono mientras habla para evitar auto-cancelación y eco.
    */
   speakText(text) {
-    return new Promise((resolve) => {
-      if (!window.speechSynthesis) {
+    return new Promise(async (resolve) => {
+      if (!window.speechSynthesis || !text) {
+        if (this.audioVad) this.audioVad.isPaused = false;
         resolve();
         return;
       }
 
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'en-US';
-      utterance.rate = 1.0;
-      utterance.pitch = 1.0;
-
-      // Buscar la mejor voz en inglés disponible en el dispositivo
-      const voices = window.speechSynthesis.getVoices();
-      const englishVoice = voices.find(v => 
-        (v.lang.startsWith('en') && (v.name.includes('Google') || v.name.includes('Samantha') || v.name.includes('Natural') || v.name.includes('Daniel')))
-      ) || voices.find(v => v.lang.startsWith('en'));
-
-      if (englishVoice) {
-        utterance.voice = englishVoice;
+      this.isAiSpeaking = true;
+      if (this.audioVad) {
+        this.audioVad.isPaused = true;
       }
 
-      utterance.onend = () => resolve();
-      utterance.onerror = () => resolve();
+      try {
+        if (window.speechSynthesis.paused) {
+          window.speechSynthesis.resume();
+        }
+        // Solo llamar cancel() si realmente hay una locución previa activa, esperando 60ms para no abortar la nueva en Chrome
+        if (window.speechSynthesis.speaking) {
+          window.speechSynthesis.cancel();
+          await new Promise(r => setTimeout(r, 60));
+        }
+      } catch (e) {}
 
-      window.speechSynthesis.speak(utterance);
+      const utterance = new SpeechSynthesisUtterance(text);
+      this.currentUtterance = utterance; // Evita que el Garbage Collector de Chrome/Safari corte la voz a mitad de frase
+      utterance.lang = 'en-US';
+      utterance.rate = 0.98;
+      utterance.pitch = 1.0;
+      utterance.volume = 1.0;
+
+      const voices = window.speechSynthesis.getVoices();
+      const preferredVoice = voices.find(v =>
+        v.lang.startsWith('en') &&
+        (v.name.includes('Samantha') || v.name.includes('Google US English') || v.name.includes('Natural') || v.name.includes('Ava') || v.name.includes('Allison') || v.name.includes('Victoria') || v.name.includes('Karen') || v.name.includes('Daniel'))
+      ) || voices.find(v => v.lang === 'en-US' || v.lang === 'en_US') || voices.find(v => v.lang.startsWith('en'));
+
+      if (preferredVoice) {
+        utterance.voice = preferredVoice;
+      }
+
+      let finished = false;
+      const finishSpeaking = () => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(safetyTimer);
+        // Esperar 350ms tras terminar de hablar para que se disipe el eco acústico antes de reabrir el micrófono
+        setTimeout(() => {
+          this.isAiSpeaking = false;
+          this.latestTranscript = '';
+          this.interimTranscript = '';
+          if (this.audioVad) {
+            this.audioVad.isPaused = false;
+          }
+          resolve();
+        }, 350);
+      };
+
+      // Timeout proporcional a la longitud del texto (mínimo 8s, máximo 20s)
+      const estimatedMs = Math.min(20000, Math.max(8000, text.length * 90));
+      const safetyTimer = setTimeout(finishSpeaking, estimatedMs);
+
+      utterance.onend = finishSpeaking;
+      utterance.onerror = (e) => {
+        console.warn('[SpeechSynthesis] Aviso en reproducción:', e.error || e);
+        finishSpeaking();
+      };
+
+      try {
+        window.speechSynthesis.speak(utterance);
+        // Workaround para Safari/Chrome cuando el motor queda suspendido
+        if (window.speechSynthesis.paused) {
+          window.speechSynthesis.resume();
+        }
+      } catch (e) {
+        finishSpeaking();
+      }
     });
   }
 
@@ -353,6 +558,14 @@ ${wrapUpDirective}
     if (!this.isSessionActive) return;
 
     this.isSessionActive = false;
+    this.isAiSpeaking = false;
+    this.isAiResponding = false;
+
+    if (this.speechFinalizeTimer) {
+      clearTimeout(this.speechFinalizeTimer);
+      this.speechFinalizeTimer = null;
+    }
+
     clearInterval(this.timerInterval);
     this.timerInterval = null;
 
@@ -364,7 +577,7 @@ ${wrapUpDirective}
       this.audioVad.stop();
     }
 
-    window.speechSynthesis.cancel();
+    try { window.speechSynthesis.cancel(); } catch (e) {}
 
     this.onSessionFinished({
       scenario: this.scenario,
@@ -374,4 +587,3 @@ ${wrapUpDirective}
     });
   }
 }
-

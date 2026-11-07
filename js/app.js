@@ -4,11 +4,12 @@
  */
 
 document.addEventListener('DOMContentLoaded', async () => {
-  // 1. Registrar Service Worker para PWA
+  // 1. Registrar y forzar actualización de Service Worker para PWA
   if ('serviceWorker' in navigator) {
     try {
-      await navigator.serviceWorker.register('./sw.js');
-      console.log('[PWA] Service Worker registrado con éxito.');
+      const reg = await navigator.serviceWorker.register('./sw.js?v=4');
+      await reg.update();
+      console.log('[PWA] Service Worker actualizado (v4.0.0).');
     } catch (e) {
       console.warn('[PWA] No se pudo registrar Service Worker:', e);
     }
@@ -45,6 +46,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const wrapUpBanner = document.getElementById('wrap-up-banner');
   const waveVisualizer = document.getElementById('wave-visualizer');
   const liveTranscriptText = document.getElementById('live-transcript-text');
+  const btnReplayAi = document.getElementById('btn-replay-ai');
   const btnEndSession = document.getElementById('btn-end-session');
 
   // Componentes del Reporte Post-Sesión
@@ -227,7 +229,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         await handleSessionCompleted(sessionResult);
       },
       onError: (err) => {
-        alert('Aviso de Voz: ' + err.message);
+        console.warn('[App] Aviso de sesión de voz:', err.message);
+        liveTranscriptText.textContent = `⚠️ ${err.message}`;
       }
     });
 
@@ -239,6 +242,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!started) {
       switchView('home');
     }
+  }
+
+  if (btnReplayAi) {
+    btnReplayAi.addEventListener('click', async () => {
+      if (currentVoiceEngine) {
+        await currentVoiceEngine.replayLastAiMessage();
+      }
+    });
   }
 
   btnEndSession.addEventListener('click', () => {

@@ -5,9 +5,9 @@
 
 class AudioVAD {
   constructor(options = {}) {
-    this.silenceThreshold = options.silenceThreshold || 0.025; // Sensibilidad de silencio
-    this.silenceDurationMs = options.silenceDurationMs || 1400; // Milisegundos de silencio para cerrar turno
-    this.minSpeechDurationMs = options.minSpeechDurationMs || 600; // Mínimo para no disparar con carraspeos
+    this.silenceThreshold = options.silenceThreshold || 0.035; // Umbral calibrado contra ruido ambiente
+    this.silenceDurationMs = options.silenceDurationMs || 1500; // Milisegundos de silencio para cerrar turno
+    this.minSpeechDurationMs = options.minSpeechDurationMs || 700; // Mínimo para no disparar con ruidos cortos
 
     this.audioContext = null;
     this.mediaStream = null;
@@ -16,6 +16,7 @@ class AudioVAD {
     this.recordedChunks = [];
 
     this.isRecording = false;
+    this.isPaused = false; // Pausa el detector mientras el Coach habla para evitar auto-eco
     this.isSpeaking = false;
     this.speechStartTime = 0;
     this.lastSoundTime = 0;
@@ -131,6 +132,18 @@ class AudioVAD {
       const now = performance.now();
 
       this.onAudioVolume(rms);
+
+      // Si el Coach está hablando, ignorar entrada de micrófono para evitar auto-eco
+      if (this.isPaused) {
+        if (this.isSpeaking) {
+          this.isSpeaking = false;
+          if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+            try { this.mediaRecorder.stop(); } catch (e) {}
+          }
+        }
+        this.animationFrameId = requestAnimationFrame(checkLevel);
+        return;
+      }
 
       // Lógica de detección de voz (VAD)
       if (rms > this.silenceThreshold) {

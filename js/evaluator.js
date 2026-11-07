@@ -85,7 +85,11 @@ Respond EXCLUSIVELY with a valid JSON object matching this schema without markdo
 `;
 
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`;
+      // Modelos oficiales verificados en Google AI Studio (Familia Gemini 3)
+      const candidateModels = ['gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-3.1-pro-preview'];
+      let data = null;
+      let lastError = null;
+
       const payload = {
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: {
@@ -94,17 +98,36 @@ Respond EXCLUSIVELY with a valid JSON object matching this schema without markdo
         }
       };
 
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+      for (const model of candidateModels) {
+        try {
+          const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
 
-      if (!response.ok) {
-        throw new Error(`Error al evaluar sesión en Gemini (${response.status}): ${await response.text()}`);
+          if (response.status === 503 || response.status === 429) {
+            console.warn(`[Evaluator] Modelo ${model} con alta demanda (${response.status}). Conmutando al siguiente modelo...`);
+            await new Promise(r => setTimeout(r, 600));
+            continue;
+          }
+
+          if (!response.ok) {
+            throw new Error(`Status ${response.status} (${model}): ${await response.text()}`);
+          }
+
+          data = await response.json();
+          if (data.candidates && data.candidates[0]) break;
+        } catch (err) {
+          lastError = err;
+        }
       }
 
-      const data = await response.json();
+      if (!data) {
+        throw lastError || new Error('No se pudo generar la evaluación en este momento.');
+      }
+
       const rawText = data.candidates[0].content.parts[0].text;
       
       // Parsear JSON limpio

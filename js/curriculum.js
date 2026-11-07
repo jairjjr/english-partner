@@ -11,6 +11,7 @@ const PLACEMENT_TEST_SCENARIO = {
   description: 'Conversación diagnóstica guiada de 7 a 10 minutos. El coach adaptará preguntas desde lo cotidiano hasta situaciones de negocios y dilemas para ubicar tu nivel real (A2, B1, B2 o C1).',
   aiRole: 'Emma, Senior English Assessor & Friendly Coach',
   userRole: 'You (practicing your English naturally)',
+  initialGreeting: "Hello! I'm Emma, your English speaking coach. I'm excited to practice with you today! To get started, could you tell me a little bit about yourself, where you're from, and how your day is going?",
   scenarioContext: 'This is a warm diagnostic conversation. Emma starts with relaxed small talk about your daily life and hobbies, then naturally raises the complexity to your career, recent challenges, and hypothetical situations to evaluate grammar depth, vocabulary range, and phonetic clarity.',
   missionObjectives: [
     'Introduce yourself and share what you do and your daily routine.',
@@ -46,6 +47,7 @@ const CURRICULUM_SCENARIOS = [
     description: 'Conversación distendida de lunes: contar qué hiciste el fin de semana, planes y anécdotas ligeras.',
     aiRole: 'Liam, an easygoing friend you run into at the park',
     userRole: 'Friend catching up on life',
+    initialGreeting: "Hey! What a nice surprise running into you here. How was your weekend? Did you get up to anything interesting?",
     scenarioContext: 'You meet Liam while grabbing coffee near the park. He asks how your weekend went and what you have planned for this week.',
     missionObjectives: [
       'Describe at least 2 activities you did over the weekend (using past tense).',
