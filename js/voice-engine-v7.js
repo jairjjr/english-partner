@@ -23,6 +23,8 @@ class VoiceEngine {
     this.maxDurationSeconds = options.maxDurationSeconds || 600;
     this.wrapUpThresholdSeconds = 120;
     this.silenceDelayMs = options.silenceDelayMs || 2800; // Calibrado para permitir pensar respuestas sin cortes prematuros
+    this.userLevel = options.userLevel || 'B1';
+    this.pendingMistakes = options.pendingMistakes || [];
 
     this.timerInterval = null;
     this.waveInterval = null;
@@ -196,6 +198,20 @@ class VoiceEngine {
     }
   }
 
+  /**
+   * Calcula la velocidad de habla progresiva según el nivel diagnosticado del alumno
+   */
+  getAdaptivePlaybackRate() {
+    if (this.scenario && this.scenario.id === 'placement_test') return 0.95;
+    switch (this.userLevel) {
+      case 'A2': return 0.90; // Más pausado y articulado al inicio
+      case 'B1': return 0.96; // Ritmo conversacional natural
+      case 'B2': return 1.00; // Velocidad nativa estándar
+      case 'C1': return 1.04; // Ritmo ejecutivo dinámico
+      default: return 0.95;
+    }
+  }
+
   playGeminiAudio(text) {
     return new Promise(async (resolve, reject) => {
       let audioUrl = null;
@@ -203,6 +219,9 @@ class VoiceEngine {
         const blob = await VoiceEngine.fetchGeminiAudioBlob(text, this.apiKey);
         audioUrl = URL.createObjectURL(blob);
         const audio = new Audio(audioUrl);
+        const rate = this.getAdaptivePlaybackRate();
+        audio.playbackRate = rate;
+        if ('preservesPitch' in audio) audio.preservesPitch = true;
         this.currentAudioElement = audio;
 
         audio.onended = () => {
@@ -461,10 +480,37 @@ class VoiceEngine {
         wrapUpDirective = `\n[SYSTEM CUE: Exactly ${Math.floor(remainingSeconds / 60)} minutes and ${remainingSeconds % 60} seconds remaining in this 10-minute session. Wrap up the conversation naturally and say goodbye.]`;
       }
 
+      // 1. Directiva de nivel adaptativo (velocidad léxica y complejidad)
+      let levelDirective = '';
+      if (this.scenario.id !== 'placement_test') {
+        if (this.userLevel === 'A2') {
+          levelDirective = '\nADAPTIVE LEVEL (A2): Use clear, everyday vocabulary and concise sentences so the student builds confidence.';
+        } else if (this.userLevel === 'B1') {
+          levelDirective = '\nADAPTIVE LEVEL (B1): Use natural intermediate English and weave in common phrasal verbs or everyday idioms.';
+        } else if (this.userLevel === 'B2') {
+          levelDirective = '\nADAPTIVE LEVEL (B2): Use upper-intermediate professional English, rich connectors, and thought-provoking follow-up questions.';
+        } else if (this.userLevel === 'C1') {
+          levelDirective = '\nADAPTIVE LEVEL (C1): Use advanced executive English, nuanced idioms, and high-level analytical follow-up questions.';
+        }
+      }
+
+      // 2. Vocabulario objetivo de la lección
+      let vocabDirective = '';
+      if (Array.isArray(this.scenario.targetVocabulary) && this.scenario.targetVocabulary.length > 0) {
+        vocabDirective = `\nTARGET VOCABULARY FOR THIS LESSON: ${this.scenario.targetVocabulary.join(' | ')}. Naturally model 1 of these expressions when fitting and create context for the user to use them.`;
+      }
+
+      // 3. Memoria activa del Banco de Errores (Spaced Repetition)
+      let mistakesDirective = '';
+      if (Array.isArray(this.pendingMistakes) && this.pendingMistakes.length > 0) {
+        const topMistakes = this.pendingMistakes.slice(0, 5).map(m => `"${m.original}" -> should be "${m.correction}"`).join('; ');
+        mistakesDirective = `\nACTIVE SPACED-REPETITION MEMORY (PAST MISTAKES TO REINFORCE): In previous sessions, the student struggled with: [${topMistakes}]. Without breaking character or lecturing, naturally steer questions so the student has opportunities to practice these structures/words correctly, and model the correct forms in your own speech.`;
+      }
+
       const systemInstruction = `
 You are roleplaying as: ${this.scenario.aiRole}.
 The scenario is: ${this.scenario.scenarioContext}.
-${this.scenario.systemPromptAddon || ''}
+${this.scenario.systemPromptAddon || ''}${levelDirective}${vocabDirective}${mistakesDirective}
 
 RULES:
 1. Stay 100% in character.

@@ -72,6 +72,15 @@ const SyncService = {
     const gasUrl = Config.getGasUrl();
     const pin = Config.getPin();
 
+    // Extraer y persistir errores para alimentar la memoria activa de las próximas sesiones
+    const extractedMistakes = Config.addMistakesFromReport(report);
+    if (report && !report.mistakes) {
+      report.mistakes = extractedMistakes;
+    }
+    if (sessionData && sessionData.scenario && sessionData.scenario.id) {
+      Config.markScenarioCompleted(sessionData.scenario.id);
+    }
+
     const payload = {
       action: 'saveSession',
       pin: pin,
@@ -111,6 +120,11 @@ const SyncService = {
   async savePlacement(level, sessionData, report) {
     Config.setLevel(level);
     Config.setPlacementDone(true);
+
+    const extractedMistakes = Config.addMistakesFromReport(report);
+    if (report && !report.mistakes) {
+      report.mistakes = extractedMistakes;
+    }
 
     const gasUrl = Config.getGasUrl();
     const pin = Config.getPin();
@@ -169,6 +183,9 @@ const SyncService = {
         }
         if (data.data.apiKey && !Config.getApiKey()) {
           Config.setApiKey(data.data.apiKey);
+        }
+        if (Array.isArray(data.data.pendingMistakes) && data.data.pendingMistakes.length > 0) {
+          Config.setPendingMistakes(data.data.pendingMistakes);
         }
         return data.data;
       }

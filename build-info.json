@@ -1,19 +1,17 @@
 {
   "project": "English Partner",
-  "version": "7.1.0",
-  "build_timestamp_utc": "2026-11-07T20:47:00Z",
+  "version": "7.2.0",
+  "build_timestamp_utc": "2026-11-07T21:11:00Z",
   "target_environment": "production",
   "platform": "PWA / WebKit Safari / Android Chrome / Samsung Internet",
   "tts_engine": "Google Gemini Native Studio Audio (gemini-3.8-flash-lite-tts, voice Aoede 24kHz)",
   "features": [
-    "Adaptive Silence Hold Time (2.8s default / 3.5s relaxed)",
-    "Instant Turn Submission Button ('Enviar ahora')",
-    "Settings Pause Rhythm Selector (Relajado / Estándar / Fluido)",
-    "Auto-recovery on screen unlock (visibilitychange)",
-    "Blind Listening Mode (Modo Oido Puro) with On-Demand Reveal",
-    "Safari & Android Tap-to-Talk Shield for Multi-Turn Voice",
-    "Complete Post-Session Conversation Transcript (Tab 4)",
-    "Scorched Earth Cache-Busting v7.1.0"
+    "Adaptive Speech Rate & Lexical Complexity by CEFR Level (A2 0.90x -> C1 1.04x)",
+    "Active Spaced-Repetition Mistake Vault Injection into Coach Memory",
+    "Personalized 'Práctica Enfocada en Mis Errores' Dynamic Scenario Card",
+    "Smart Curriculum Sorting with '⭐ Recomendado para tu nivel' & Auto Level-Up",
+    "Adaptive Silence Hold Time (2.8s default / 3.5s relaxed) & Instant Submit Button",
+    "Blind Listening Mode (Modo Oido Puro) & Complete Conversation Transcript (Tab 4)"
   ],
   "verification": "jsc syntax check passed with exit code 0"
 }

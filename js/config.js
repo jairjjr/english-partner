@@ -15,7 +15,125 @@ const Config = {
     PLACEMENT_DONE: 'ep_placement_done',
     DRIVE_MODE: 'ep_drive_mode_enabled',
     VOICE_URI: 'ep_selected_voice_uri',
-    PAUSE_DELAY: 'ep_pause_delay_ms'
+    PAUSE_DELAY: 'ep_pause_delay_ms',
+    PENDING_MISTAKES: 'ep_pending_mistakes',
+    COMPLETED_SCENARIOS: 'ep_completed_scenarios',
+    RECENT_SCORES: 'ep_recent_scores'
+  },
+
+  getPendingMistakes() {
+    try {
+      return JSON.parse(localStorage.getItem(this.KEYS.PENDING_MISTAKES) || '[]');
+    } catch (e) {
+      return [];
+    }
+  },
+
+  setPendingMistakes(mistakes) {
+    if (Array.isArray(mistakes)) {
+      localStorage.setItem(this.KEYS.PENDING_MISTAKES, JSON.stringify(mistakes.slice(0, 15)));
+    }
+  },
+
+  extractMistakesFromReport(report) {
+    if (!report) return [];
+    const list = [];
+    if (Array.isArray(report.grammarAudit)) {
+      report.grammarAudit.forEach(g => {
+        if (g.original && g.corrected) {
+          list.push({
+            type: 'GRAMMAR',
+            original: g.original,
+            correction: g.corrected,
+            explanation: g.explanation || g.rule || ''
+          });
+        }
+      });
+    }
+    if (Array.isArray(report.vocabularyAudit)) {
+      report.vocabularyAudit.forEach(v => {
+        if (v.original && (v.nativeAlternative || v.businessAlternative)) {
+          list.push({
+            type: 'VOCABULARY',
+            original: v.original,
+            correction: v.businessAlternative || v.nativeAlternative,
+            explanation: v.reason || ''
+          });
+        }
+      });
+    }
+    if (Array.isArray(report.pronunciationAudit)) {
+      report.pronunciationAudit.forEach(p => {
+        if (p.word) {
+          list.push({
+            type: 'PRONUNCIATION',
+            original: p.word,
+            correction: `${p.word} (${p.figuredPronunciation || p.ipa || ''})`,
+            explanation: p.phoneticTip || ''
+          });
+        }
+      });
+    }
+    return list;
+  },
+
+  addMistakesFromReport(report) {
+    const newMistakes = this.extractMistakesFromReport(report);
+    if (newMistakes.length === 0) return [];
+    const existing = this.getPendingMistakes();
+    const combined = [...newMistakes, ...existing].slice(0, 15);
+    this.setPendingMistakes(combined);
+    return newMistakes;
+  },
+
+  getCompletedScenarios() {
+    try {
+      return JSON.parse(localStorage.getItem(this.KEYS.COMPLETED_SCENARIOS) || '[]');
+    } catch (e) {
+      return [];
+    }
+  },
+
+  markScenarioCompleted(scenarioId) {
+    if (!scenarioId || scenarioId === 'placement_test') return;
+    const list = this.getCompletedScenarios();
+    if (!list.includes(scenarioId)) {
+      list.push(scenarioId);
+      localStorage.setItem(this.KEYS.COMPLETED_SCENARIOS, JSON.stringify(list));
+    }
+  },
+
+  recordSessionScore(scoreOverall) {
+    const currentLevel = this.getLevel();
+    if (!currentLevel || currentLevel === 'PENDING_PLACEMENT') return null;
+
+    let scores = [];
+    try {
+      scores = JSON.parse(localStorage.getItem(this.KEYS.RECENT_SCORES) || '[]');
+    } catch (e) {
+      scores = [];
+    }
+
+    scores.push({ level: currentLevel, score: Number(scoreOverall) || 0, date: Date.now() });
+    scores = scores.slice(-5);
+    localStorage.setItem(this.KEYS.RECENT_SCORES, JSON.stringify(scores));
+
+    const sameLevelScores = scores.filter(s => s.level === currentLevel);
+    if (sameLevelScores.length >= 3) {
+      const lastThree = sameLevelScores.slice(-3);
+      const avg = lastThree.reduce((acc, item) => acc + item.score, 0) / 3;
+      const ladder = ['A2', 'B1', 'B2', 'C1'];
+      const idx = ladder.indexOf(currentLevel);
+      if (avg >= 88 && idx !== -1 && idx < ladder.length - 1) {
+        return {
+          shouldLevelUp: true,
+          currentLevel: currentLevel,
+          nextLevel: ladder[idx + 1],
+          averageScore: Math.round(avg)
+        };
+      }
+    }
+    return null;
   },
 
   getPauseDelay() {

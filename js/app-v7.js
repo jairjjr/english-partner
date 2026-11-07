@@ -183,7 +183,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   async function syncWithCloud() {
     if (Config.getGasUrl()) {
       const cloudData = await SyncService.fetchCloudProgress();
-      if (cloudData) updateUserBadge();
+      if (cloudData) {
+        updateUserBadge();
+        renderScenarios();
+      }
     }
   }
 
@@ -205,19 +208,76 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function renderScenarios() {
-    const scenarios = Curriculum.getScenariosByCategory(activeCategory);
+    const userLevel = Config.getLevel();
+    const completedIds = Config.getCompletedScenarios();
+    const pendingMistakes = Config.getPendingMistakes();
+    const scenarios = Curriculum.getScenariosSortedForUser(activeCategory, userLevel, completedIds);
+
     scenariosGrid.innerHTML = '';
+
+    // 1. Si el alumno tiene errores registrados en su Banco de Errores, mostrar primero la tarjeta adaptativa de repaso
+    if (pendingMistakes.length > 0 && (activeCategory === 'all' || activeCategory === 'adaptive')) {
+      const drillScenario = Curriculum.getMistakesDrillScenario(userLevel, pendingMistakes);
+      const drillCard = document.createElement('div');
+      drillCard.className = 'scenario-card';
+      drillCard.style.borderColor = '#10b981';
+      drillCard.style.background = 'linear-gradient(145deg, rgba(16, 185, 129, 0.12), rgba(15, 23, 42, 0.95))';
+
+      const sampleCorrections = pendingMistakes.slice(0, 2)
+        .map(m => `<span style="font-size: 0.75rem; background: rgba(16, 185, 129, 0.18); color: #34d399; padding: 2px 8px; border-radius: 6px; display: inline-block; margin: 2px 4px 2px 0;">✓ "${m.correction}"</span>`)
+        .join('');
+
+      drillCard.innerHTML = `
+        <div>
+          <div class="card-header">
+            <span class="level-tag" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border-color: #10b981;">🔥 Repaso Personalizado (${drillScenario.level})</span>
+            <span style="font-size: 0.8rem; color: #34d399; font-weight: 700;">${pendingMistakes.length} puntos por pulir</span>
+          </div>
+          <h3 class="card-title">${drillScenario.title}</h3>
+          <p class="card-desc">${drillScenario.description}</p>
+          <div style="margin-bottom: 10px;">${sampleCorrections}</div>
+        </div>
+        <div class="card-footer">
+          <span>🗣️ Emma (Coach Personal)</span>
+          <span style="color: #34d399; font-weight: 700;">Practicar Errores &rarr;</span>
+        </div>
+      `;
+      drillCard.addEventListener('click', () => startSession(drillScenario));
+      scenariosGrid.appendChild(drillCard);
+    }
+
+    // 2. Renderizar los escenarios ordenados por nivel recomendado
     scenarios.forEach(sc => {
+      const isRecommended = (userLevel !== 'PENDING_PLACEMENT' && sc.level === userLevel && !completedIds.includes(sc.id));
+      const isCompleted = completedIds.includes(sc.id);
+
       const card = document.createElement('div');
       card.className = 'scenario-card';
+      if (isRecommended) {
+        card.style.borderColor = 'var(--accent)';
+        card.style.boxShadow = '0 0 18px rgba(14, 165, 233, 0.15)';
+      }
+
+      let statusBadge = `<span style="font-size: 0.8rem; color: var(--text-muted);">⏱️ 10 min</span>`;
+      if (isRecommended) {
+        statusBadge = `<span style="font-size: 0.75rem; background: rgba(14, 165, 233, 0.2); color: #38bdf8; padding: 2px 8px; border-radius: 10px; font-weight: 700;">⭐ Recomendado para tu nivel</span>`;
+      } else if (isCompleted) {
+        statusBadge = `<span style="font-size: 0.75rem; color: #34d399; font-weight: 700;">✅ Completado</span>`;
+      }
+
+      const vocabPreview = Array.isArray(sc.targetVocabulary) && sc.targetVocabulary.length > 0
+        ? `<div style="margin-bottom: 10px; font-size: 0.75rem; color: var(--text-muted);">💡 Meta: <i style="color: #cbd5e1;">"${sc.targetVocabulary[0]}"</i></div>`
+        : '';
+
       card.innerHTML = `
         <div>
           <div class="card-header">
             <span class="level-tag">${sc.level}</span>
-            <span style="font-size: 0.8rem; color: var(--text-muted);">⏱️ 10 min</span>
+            ${statusBadge}
           </div>
           <h3 class="card-title">${sc.title}</h3>
           <p class="card-desc">${sc.description}</p>
+          ${vocabPreview}
         </div>
         <div class="card-footer">
           <span>${sc.aiRole.split(',')[0]}</span>
@@ -306,6 +366,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       mode: Config.isDriveMode() ? 'DRIVE' : 'NORMAL',
       maxDurationSeconds: 600,
       silenceDelayMs: Config.getPauseDelay(), // Pausa adaptativa (2.8s por defecto)
+      userLevel: Config.getLevel(), // Para calibrar velocidad de voz (0.90x -> 1.04x) y complejidad
+      pendingMistakes: Config.getPendingMistakes(), // Memoria activa de errores pasados
       onTimerTick: (timeData) => {
         sessionTimerDigits.textContent = timeData.formatted;
       },
@@ -432,11 +494,22 @@ document.addEventListener('DOMContentLoaded', async () => {
       const assignedLevel = latestGeneratedReport.placement.assignedLevel || 'B1';
       Config.setLevel(assignedLevel);
       Config.setPlacementDone(true);
-      updateUserBadge();
       await SyncService.savePlacement(assignedLevel, sessionResult, latestGeneratedReport);
     } else {
       await SyncService.saveSession(sessionResult, latestGeneratedReport);
+      // Evaluar si el desempeño sostenido amerita subir de nivel automáticamente
+      const overallScore = (latestGeneratedReport.scores && latestGeneratedReport.scores.overall) || 0;
+      const levelUpCheck = Config.recordSessionScore(overallScore);
+      if (levelUpCheck && levelUpCheck.shouldLevelUp) {
+        Config.setLevel(levelUpCheck.nextLevel);
+        setTimeout(() => {
+          alert(`🎉 ¡Felicidades! Por tu excelente promedio (${levelUpCheck.averageScore}/100), has subido del nivel ${levelUpCheck.currentLevel} al nivel ${levelUpCheck.nextLevel}.`);
+        }, 600);
+      }
     }
+
+    updateUserBadge();
+    renderScenarios();
 
     renderReport(sessionResult.scenario, latestGeneratedReport, sessionResult);
     switchView('report');

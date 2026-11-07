@@ -315,6 +315,64 @@ const Curriculum = {
       return CURRICULUM_SCENARIOS;
     }
     return CURRICULUM_SCENARIOS.filter(s => s.category === category);
+  },
+
+  /**
+   * Genera un escenario personalizado basado en el Banco de Errores del alumno
+   */
+  getMistakesDrillScenario(userLevel, mistakes = []) {
+    const lvl = (userLevel && userLevel !== 'PENDING_PLACEMENT') ? userLevel : 'B1';
+    const topCorrections = mistakes.slice(0, 4).map(m => m.correction).filter(Boolean);
+    const summaryMistakes = mistakes.slice(0, 5).map(m => `"${m.original}" -> "${m.correction}"`).join('; ');
+
+    return {
+      id: 'mistakes_drill',
+      category: 'adaptive',
+      level: lvl,
+      title: '🎯 Práctica Enfocada en Mis Errores (Mistake Vault)',
+      description: `Sesión personalizada con Emma para dominar y automatizar las ${mistakes.length} correcciones de gramática y vocabulario detectadas en tus sesiones anteriores.`,
+      aiRole: 'Emma, Personal English Coach & Fluency Trainer',
+      userRole: 'Student mastering previous corrections in natural conversation',
+      initialGreeting: "Welcome back! Today we have a special personalized session. We're going to have a relaxed, engaging chat where we'll naturally put into practice some of the key expressions from your recent sessions. How has your week been going so far?",
+      scenarioContext: `This is a targeted fluency workout focused on helping the student naturally use their recent corrected expressions: ${summaryMistakes}.`,
+      missionObjectives: [
+        'Use the corrected expressions naturally in real sentences.',
+        'Maintain fluid conversation at your current level.'
+      ],
+      targetVocabulary: topCorrections.length > 0 ? topCorrections : [
+        'Looking back at...',
+        'What I meant to say was...',
+        'From my perspective...'
+      ],
+      systemPromptAddon: `Act as Emma, a supportive personal coach. Create natural conversational situations that prompt the user to use these target corrections: ${summaryMistakes}.`
+    };
+  },
+
+  /**
+   * Ordena los escenarios de forma inteligente según el nivel actual y progreso del usuario
+   */
+  getScenariosSortedForUser(category, userLevel, completedIds = []) {
+    const base = this.getScenariosByCategory(category).slice();
+    if (!userLevel || userLevel === 'PENDING_PLACEMENT') {
+      return base;
+    }
+
+    const levelOrder = ['A2', 'B1', 'B2', 'C1'];
+    const userIdx = levelOrder.indexOf(userLevel);
+
+    return base.sort((a, b) => {
+      const aRecommended = (a.level === userLevel && !completedIds.includes(a.id)) ? 0 : 1;
+      const bRecommended = (b.level === userLevel && !completedIds.includes(b.id)) ? 0 : 1;
+      if (aRecommended !== bRecommended) return aRecommended - bRecommended;
+
+      const aMatch = (a.level === userLevel) ? 0 : 1;
+      const bMatch = (b.level === userLevel) ? 0 : 1;
+      if (aMatch !== bMatch) return aMatch - bMatch;
+
+      const aDist = Math.abs(levelOrder.indexOf(a.level) - userIdx);
+      const bDist = Math.abs(levelOrder.indexOf(b.level) - userIdx);
+      return aDist - bDist;
+    });
   }
 };
 
