@@ -546,6 +546,33 @@ body.drive-mode .timer-digits {
   border-color: var(--accent);
 }
 
+.btn-submit-turn {
+  background: #059669;
+  border: 1px solid #10b981;
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 700;
+  padding: 6px 16px;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.35);
+  animation: pulseSubmitBtn 1.8s infinite ease-in-out;
+}
+
+.btn-submit-turn:hover {
+  background: #10b981;
+  transform: scale(1.04);
+}
+
+@keyframes pulseSubmitBtn {
+  0%, 100% { box-shadow: 0 0 10px rgba(16, 185, 129, 0.3); }
+  50% { box-shadow: 0 0 20px rgba(16, 185, 129, 0.6); }
+}
+
 /* Historial Completo de Conversación (Pestaña 4 en Diagnóstico) */
 .transcript-chat-list {
   display: flex;

@@ -7,7 +7,7 @@
   <meta name="description" content="Entrenador conversacional de inglés por voz de 10 minutos con diagnóstico de gramática, vocabulario y pronunciación.">
   <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#0ea5e9">
-  <link rel="stylesheet" href="./css/styles.css?v=7">
+  <link rel="stylesheet" href="./css/styles.css?v=7.1">
 </head>
 <body>
 
@@ -105,9 +105,14 @@
           </div>
           <div class="speech-subtitles-area">
             <p id="live-transcript-text" class="subtitles-text">Conectando micrófono y coach...</p>
-            <button id="btn-toggle-subtitles" class="btn-subtitles-toggle" type="button" style="display: none;">
-              👁️ Ver subtítulo
-            </button>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;">
+              <button id="btn-toggle-subtitles" class="btn-subtitles-toggle" type="button" style="display: none;">
+                👁️ Ver subtítulo
+              </button>
+              <button id="btn-submit-turn" class="btn-submit-turn" type="button" style="display: none;">
+                🚀 Enviar ahora
+              </button>
+            </div>
           </div>
         </div>
 
@@ -229,7 +234,19 @@
 
       <div class="form-group">
         <label class="form-label" for="input-pin">PIN Personal de Seguridad</label>
-        <input type="text" id="input-pin" class="form-input" placeholder="1234">
+        <input type="text" id="input-pin" class="form-input" placeholder="8619">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="select-pause-delay">Tiempo de Pausa para Pensar (Ritmo de Conversación)</label>
+        <select id="select-pause-delay" class="form-input" style="cursor: pointer;">
+          <option value="3500">🐢 Relajado (3.5 s) - Ideal para pensar y buscar palabras</option>
+          <option value="2800" selected>⚡ Estándar (2.8 s) - Recomendado y natural</option>
+          <option value="1800">🚀 Fluido (1.8 s) - Respuestas rápidas / Avanzado</option>
+        </select>
+        <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
+          Evita que Emma te interrumpa cuando haces pausas para buscar palabras en inglés.
+        </p>
       </div>
 
       <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px;">
@@ -244,14 +261,14 @@
   </div>
 
 
-  <!-- ARCHIVOS JAVASCRIPT MODULARES (VERSIÓN V7 - GEMINI TTS & OÍDO PURO) -->
-  <script src="./js/config.js?v=7"></script>
-  <script src="./js/curriculum.js?v=7"></script>
-  <script src="./js/audio-vad.js?v=7"></script>
-  <script src="./js/voice-engine-v7.js?v=7"></script>
-  <script src="./js/evaluator-v5.js?v=7"></script>
-  <script src="./js/sync.js?v=7"></script>
-  <script src="./js/app-v7.js?v=7"></script>
+  <!-- ARCHIVOS JAVASCRIPT MODULARES (VERSIÓN V7.1 - PAUSE CONTROL & GEMINI TTS) -->
+  <script src="./js/config.js?v=7.1"></script>
+  <script src="./js/curriculum.js?v=7.1"></script>
+  <script src="./js/audio-vad.js?v=7.1"></script>
+  <script src="./js/voice-engine-v7.js?v=7.1"></script>
+  <script src="./js/evaluator-v5.js?v=7.1"></script>
+  <script src="./js/sync.js?v=7.1"></script>
+  <script src="./js/app-v7.js?v=7.1"></script>
 </body>
 </html>
 

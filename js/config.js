@@ -5,6 +5,7 @@ const Config = {
   // Configuración predeterminada para tu aplicación
   DEFAULT_GAS_URL: 'https://script.google.com/macros/s/AKfycbx4P1vL7VYbu5upoMaNfq_M61LYMTQ5S9arKhJRGCSucEU0sJDtYTqKF9AS0yL9jI7U/exec',
   DEFAULT_API_KEY: '', // Se descarga automáticamente y de forma segura desde tu Google Apps Script privado
+  DEFAULT_PIN: '8619',
 
   KEYS: {
     API_KEY: 'ep_gemini_api_key',
@@ -51,7 +52,7 @@ const Config = {
   },
 
   getPin() {
-    return localStorage.getItem(this.KEYS.PIN) || '1234';
+    return localStorage.getItem(this.KEYS.PIN) || this.DEFAULT_PIN;
   },
 
   setPin(pin) {
