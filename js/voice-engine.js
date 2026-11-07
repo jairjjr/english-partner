@@ -279,8 +279,8 @@ ${wrapUpDirective}
       }
     };
 
-    // Usamos gemini-2.5-flash como modelo conversacional rápido
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${this.apiKey}`;
+    // Usamos gemini-3.8-flash como modelo conversacional rápido
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${this.apiKey}`;
     
     const response = await fetch(url, {
       method: 'POST',
@@ -302,7 +302,7 @@ ${wrapUpDirective}
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       generationConfig: { temperature: 0.8, maxOutputTokens: 120 }
     };
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${this.apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${this.apiKey}`;
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
