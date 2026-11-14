@@ -1,24 +1,26 @@
 /**
- * Controlador Principal de la Aplicación (English Partner v7 - Studio Quality & Mobile Resilient)
+ * Controlador Principal de la Aplicación (English Partner v8.1 - Pulido Premium & Blindaje)
  * - Integración con Gemini Studio TTS (gemini-3.8-flash-lite-tts con voz Aoede)
- * - Modo Oído Puro (Blind Listening) con visor de transcripción bajo demanda
- * - Tap-to-Talk Shield táctil para Safari macOS y Samsung Android
- * - Pestaña forense de Transcripción Completa turno a turno
+ * - Modo Oído Puro (Blind Listening) + Tap-to-Talk Shield
+ * - Modales nativos <dialog> con inert, Toasts no bloqueantes y Skeleton Screens
+ * - Barra de progreso, Historial y gestión de Banco de Errores
  */
 
 document.addEventListener('DOMContentLoaded', async () => {
-  // 1. Service Worker PWA v8.0.0
+  // 1. Service Worker PWA v8.1.0
   if ('serviceWorker' in navigator) {
     try {
-      const reg = await navigator.serviceWorker.register('./sw.js?v=8.0');
+      const reg = await navigator.serviceWorker.register('./sw.js?v=8.1');
       await reg.update();
-      console.log('[PWA] Service Worker v8.0.0 actualizado.');
+      console.log('[PWA] Service Worker v8.1.0 actualizado.');
     } catch (e) {
       console.warn('[PWA] Service Worker:', e);
     }
   }
 
   // 2. Elementos del DOM
+  const appHeader = document.getElementById('app-header');
+  const appMain = document.getElementById('app-main');
   const views = {
     home: document.getElementById('view-home'),
     session: document.getElementById('view-session'),
@@ -26,15 +28,34 @@ document.addEventListener('DOMContentLoaded', async () => {
   };
 
   const btnDriveToggle = document.getElementById('btn-drive-toggle');
+  const btnHistory = document.getElementById('btn-history');
   const btnSettings = document.getElementById('btn-settings');
+
   const modalSettings = document.getElementById('modal-settings');
   const btnCloseSettings = document.getElementById('btn-close-settings');
   const btnSaveSettings = document.getElementById('btn-save-settings');
+
+  const modalHistory = document.getElementById('modal-history');
+  const btnCloseHistory = document.getElementById('btn-close-history');
+  const historyMistakesList = document.getElementById('history-mistakes-list');
+  const historySessionsList = document.getElementById('history-sessions-list');
+
+  const modalConfirm = document.getElementById('modal-confirm');
+  const confirmMessage = document.getElementById('confirm-message');
+  const btnConfirmCancel = document.getElementById('btn-confirm-cancel');
+  const btnConfirmAccept = document.getElementById('btn-confirm-accept');
+
+  const toastContainer = document.getElementById('toast-container');
 
   const inputApiKey = document.getElementById('input-api-key');
   const inputGasUrl = document.getElementById('input-gas-url');
   const inputPin = document.getElementById('input-pin');
   const selectPauseDelay = document.getElementById('select-pause-delay');
+
+  const statSessions = document.getElementById('stat-sessions');
+  const statMinutes = document.getElementById('stat-minutes');
+  const statMistakes = document.getElementById('stat-mistakes');
+  const btnRetakePlacement = document.getElementById('btn-retake-placement');
 
   const placementBanner = document.getElementById('placement-banner');
   const btnStartPlacement = document.getElementById('btn-start-placement');
@@ -48,7 +69,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   const wrapUpBanner = document.getElementById('wrap-up-banner');
   const waveVisualizer = document.getElementById('wave-visualizer');
 
-  // Tarjeta de voz interactiva y Oído Puro
   const liveSpeechCard = document.getElementById('live-speech-card');
   const speechStatusPill = document.getElementById('speech-status-pill');
   const liveTranscriptText = document.getElementById('live-transcript-text');
@@ -59,6 +79,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const btnEndSession = document.getElementById('btn-end-session');
 
   const reportScenarioTitle = document.getElementById('report-scenario-title');
+  const reportSkeleton = document.getElementById('report-skeleton');
+  const reportMainContent = document.getElementById('report-main-content');
   const reportErrorBanner = document.getElementById('report-error-banner');
   const reportErrorMessage = document.getElementById('report-error-message');
   const btnRetryEvaluation = document.getElementById('btn-retry-evaluation');
@@ -80,6 +102,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   let latestGeneratedReport = null;
   let latestSessionResult = null;
   let isSubtitlesRevealed = false;
+  let confirmResolver = null;
 
   function escapeHtml(text) {
     return String(text || '')
@@ -90,29 +113,105 @@ document.addEventListener('DOMContentLoaded', async () => {
       .replace(/'/g, '&#39;');
   }
 
+  function showToast(message, type = 'info', durationMs = 3400) {
+    if (!toastContainer) return;
+    const toast = document.createElement('div');
+    const typeClass = type === 'info' ? '' : ` toast-${type}`;
+    toast.className = `toast${typeClass}`;
+    toast.textContent = message;
+    toastContainer.appendChild(toast);
+
+    setTimeout(() => {
+      toast.remove();
+    }, durationMs);
+  }
+
+  function setBackgroundInert(isInert) {
+    if (appHeader) appHeader.inert = isInert;
+    if (appMain) appMain.inert = isInert;
+  }
+
+  function openDialog(dlg) {
+    if (!dlg) return;
+    setBackgroundInert(true);
+    if (typeof dlg.showModal === 'function') {
+      if (!dlg.open) dlg.showModal();
+    } else {
+      dlg.setAttribute('open', '');
+    }
+  }
+
+  function closeDialog(dlg) {
+    if (!dlg) return;
+    if (typeof dlg.close === 'function' && dlg.open) {
+      dlg.close();
+    } else {
+      dlg.removeAttribute('open');
+    }
+    setBackgroundInert(false);
+  }
+
+  [modalSettings, modalHistory, modalConfirm].forEach(dlg => {
+    if (dlg) {
+      dlg.addEventListener('close', () => setBackgroundInert(false));
+      dlg.addEventListener('cancel', () => setBackgroundInert(false));
+    }
+  });
+
+  function askConfirm(message, acceptLabel = 'Confirmar') {
+    if (!modalConfirm || !confirmMessage || !btnConfirmAccept) {
+      return Promise.resolve(true);
+    }
+    confirmMessage.textContent = message;
+    btnConfirmAccept.textContent = acceptLabel;
+    openDialog(modalConfirm);
+
+    return new Promise((resolve) => {
+      confirmResolver = resolve;
+    });
+  }
+
+  if (btnConfirmCancel) {
+    btnConfirmCancel.addEventListener('click', () => {
+      closeDialog(modalConfirm);
+      if (confirmResolver) {
+        confirmResolver(false);
+        confirmResolver = null;
+      }
+    });
+  }
+
+  if (btnConfirmAccept) {
+    btnConfirmAccept.addEventListener('click', () => {
+      closeDialog(modalConfirm);
+      if (confirmResolver) {
+        confirmResolver(true);
+        confirmResolver = null;
+      }
+    });
+  }
+
   initAppMode();
   renderCategories();
   renderScenarios();
   updateUserBadge();
+  updateStatsBar();
   syncWithCloud();
 
-  // Botón para probar la voz neural humana de Gemini
   if (btnTestVoice) {
-    btnTestVoice.addEventListener('click', () => {
-      testGeminiEmmaVoice();
-    });
+    btnTestVoice.addEventListener('click', testGeminiEmmaVoice);
   }
 
   async function testGeminiEmmaVoice() {
     const apiKey = Config.getApiKey();
     if (!apiKey) {
-      alert('Por favor ingresa tu API Key de Gemini en el engrane ⚙️ primero.');
+      showToast('Ingresa tu API Key de Gemini en Ajustes primero.', 'warning');
       openSettings();
       return;
     }
 
     const originalText = btnTestVoice.innerHTML;
-    btnTestVoice.innerHTML = '⏳ Conectando Gemini...';
+    btnTestVoice.innerHTML = '⏳ Conectando...';
     btnTestVoice.disabled = true;
 
     try {
@@ -120,18 +219,18 @@ document.addEventListener('DOMContentLoaded', async () => {
       const blob = await VoiceEngine.fetchGeminiAudioBlob(sampleText, apiKey);
       const audioUrl = URL.createObjectURL(blob);
       const audio = new Audio(audioUrl);
-      
+
       audio.onended = () => {
         URL.revokeObjectURL(audioUrl);
         btnTestVoice.innerHTML = originalText;
         btnTestVoice.disabled = false;
       };
-      
+
       audio.onerror = () => {
         URL.revokeObjectURL(audioUrl);
         btnTestVoice.innerHTML = originalText;
         btnTestVoice.disabled = false;
-        alert('No se pudo reproducir el audio de prueba.');
+        showToast('No se pudo reproducir el audio de prueba.', 'error');
       };
 
       await audio.play();
@@ -139,15 +238,15 @@ document.addEventListener('DOMContentLoaded', async () => {
       console.warn('[TestVoice] Falló audio Gemini, recurriendo a voz local:', err.message);
       btnTestVoice.innerHTML = originalText;
       btnTestVoice.disabled = false;
-      
-      // Fallback
+
       if (window.speechSynthesis) {
         window.speechSynthesis.cancel();
         const utt = new SpeechSynthesisUtterance("Hi there! I'm Emma. Audio fallback active.");
         utt.lang = 'en-US';
         window.speechSynthesis.speak(utt);
+        showToast('Voz neural ocupada; usando respaldo local.', 'warning');
       } else {
-        alert('Error conectando a Gemini TTS: ' + err.message);
+        showToast('Error conectando a Gemini TTS: ' + err.message, 'error');
       }
     }
   }
@@ -180,27 +279,47 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function updateUserBadge() {
     const level = Config.getLevel();
+    userLevelBadge.classList.remove('level-tag-warning', 'level-tag-accent');
     if (level === 'PENDING_PLACEMENT') {
       userLevelBadge.textContent = 'Diagnóstico Pendiente';
-      userLevelBadge.style.color = 'var(--warning)';
-      userLevelBadge.style.borderColor = 'var(--warning)';
+      userLevelBadge.classList.add('level-tag-warning');
       placementBanner.style.display = 'flex';
+      if (btnRetakePlacement) btnRetakePlacement.hidden = true;
     } else {
       userLevelBadge.textContent = `Nivel: ${level}`;
-      userLevelBadge.style.color = 'var(--accent)';
-      userLevelBadge.style.borderColor = 'var(--accent)';
+      userLevelBadge.classList.add('level-tag-accent');
       placementBanner.style.display = 'none';
+      if (btnRetakePlacement) btnRetakePlacement.hidden = false;
     }
   }
 
+  function updateStatsBar() {
+    const stats = Config.getStats();
+    const pending = Config.getPendingMistakes();
+    if (statSessions) statSessions.textContent = stats.totalSessions;
+    if (statMinutes) statMinutes.textContent = `${stats.totalMinutes}m`;
+    if (statMistakes) statMistakes.textContent = pending.length;
+  }
+
   async function syncWithCloud() {
-    if (Config.getGasUrl()) {
-      const cloudData = await SyncService.fetchCloudProgress();
-      if (cloudData) {
-        updateUserBadge();
-        renderScenarios();
-      }
+    if (!Config.getGasUrl()) return;
+
+    const cloudData = await SyncService.fetchCloudProgress();
+    if (!cloudData) return;
+
+    if (cloudData.needsPin) {
+      showToast('Ingresa tu PIN en ⚙️ Ajustes para sincronizar con tu Sheet.', 'info');
+      return;
     }
+
+    if (cloudData.authError) {
+      showToast('PIN inválido al sincronizar con Google Sheets.', 'warning');
+      return;
+    }
+
+    updateUserBadge();
+    updateStatsBar();
+    renderScenarios();
   }
 
   function renderCategories() {
@@ -208,6 +327,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     categoryTabsContainer.innerHTML = '';
     categories.forEach(cat => {
       const tab = document.createElement('button');
+      tab.type = 'button';
       tab.className = `cat-tab ${cat.id === activeCategory ? 'active' : ''}`;
       tab.textContent = cat.name;
       tab.addEventListener('click', () => {
@@ -228,36 +348,34 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     scenariosGrid.innerHTML = '';
 
-    // 1. Si el alumno tiene errores registrados en su Banco de Errores, mostrar primero la tarjeta adaptativa de repaso
     if (pendingMistakes.length > 0 && (activeCategory === 'all' || activeCategory === 'adaptive')) {
       const drillScenario = Curriculum.getMistakesDrillScenario(userLevel, pendingMistakes);
       const drillCard = document.createElement('div');
       drillCard.className = 'scenario-card mistakes-drill';
 
       const sampleCorrections = pendingMistakes.slice(0, 2)
-        .map(m => `<span style="font-size: 0.7rem; background: var(--bg-secondary); border: 1px solid var(--border); color: var(--success); padding: 2px 6px; border-radius: 4px; display: inline-block; margin: 2px 4px 2px 0;">✓ "${escapeHtml(m.correction)}"</span>`)
+        .map(m => `<span class="mistake-pill">✓ "${escapeHtml(m.correction)}"</span>`)
         .join('');
 
       drillCard.innerHTML = `
         <div>
           <div class="card-header">
-            <span class="level-tag" style="color: var(--success);">Repaso (${escapeHtml(drillScenario.level)})</span>
-            <span style="font-size: 0.72rem; color: var(--success); font-weight: 600;">${pendingMistakes.length} puntos por pulir</span>
+            <span class="level-tag level-tag-success">Repaso (${escapeHtml(drillScenario.level)})</span>
+            <span class="status-tag-success">${pendingMistakes.length} por pulir</span>
           </div>
           <h3 class="card-title">${escapeHtml(drillScenario.title)}</h3>
           <p class="card-desc">${escapeHtml(drillScenario.description)}</p>
-          <div style="margin-bottom: 8px;">${sampleCorrections}</div>
+          <div class="mistake-pills-wrap">${sampleCorrections}</div>
         </div>
         <div class="card-footer">
           <span>Emma (Coach Personal)</span>
-          <span style="color: var(--success); font-weight: 600;">Practicar &rarr;</span>
+          <span class="status-tag-success">Practicar &rarr;</span>
         </div>
       `;
       drillCard.addEventListener('click', () => startSession(drillScenario));
       scenariosGrid.appendChild(drillCard);
     }
 
-    // 2. Renderizar los escenarios ordenados por nivel recomendado
     scenarios.forEach(sc => {
       const isRecommended = (userLevel !== 'PENDING_PLACEMENT' && sc.level === userLevel && !completedIds.includes(sc.id));
       const isCompleted = completedIds.includes(sc.id);
@@ -265,15 +383,15 @@ document.addEventListener('DOMContentLoaded', async () => {
       const card = document.createElement('div');
       card.className = isRecommended ? 'scenario-card recommended' : 'scenario-card';
 
-      let statusBadge = `<span style="font-size: 0.72rem; color: var(--text-muted);">10 min</span>`;
+      let statusBadge = `<span class="status-tag-muted">10 min</span>`;
       if (isRecommended) {
-        statusBadge = `<span style="font-size: 0.68rem; background: var(--bg-secondary); border: 1px solid var(--border); color: var(--text-main); padding: 2px 6px; border-radius: 4px; font-weight: 600;">Recomendado</span>`;
+        statusBadge = `<span class="status-tag-recommended">Recomendado</span>`;
       } else if (isCompleted) {
-        statusBadge = `<span style="font-size: 0.72rem; color: var(--success); font-weight: 600;">Completado</span>`;
+        statusBadge = `<span class="status-tag-success">Completado</span>`;
       }
 
       const vocabPreview = Array.isArray(sc.targetVocabulary) && sc.targetVocabulary.length > 0
-        ? `<div style="margin-bottom: 8px; font-size: 0.7rem; color: var(--text-muted);">Meta: <i style="color: var(--text-main);">"${escapeHtml(sc.targetVocabulary[0])}"</i></div>`
+        ? `<div class="vocab-preview">Meta: <i>"${escapeHtml(sc.targetVocabulary[0])}"</i></div>`
         : '';
 
       card.innerHTML = `
@@ -288,7 +406,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         </div>
         <div class="card-footer">
           <span>${escapeHtml(sc.aiRole.split(',')[0])}</span>
-          <span style="color: var(--accent-light); font-weight: 600;">Entrenar &rarr;</span>
+          <span class="card-cta">Entrenar &rarr;</span>
         </div>
       `;
       card.addEventListener('click', () => startSession(sc));
@@ -297,25 +415,34 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   btnStartPlacement.addEventListener('click', () => {
-    const placementScenario = Curriculum.getPlacementTest();
-    startSession(placementScenario);
+    startSession(Curriculum.getPlacementTest());
   });
 
-  // Toggle para Modo Oído Puro (Ver / Ocultar Subtítulo)
+  if (btnRetakePlacement) {
+    btnRetakePlacement.addEventListener('click', async () => {
+      const ok = await askConfirm(
+        '¿Quieres repetir el Examen Diagnóstico Inicial (Placement Test) para recalibrar tu nivel actual?',
+        'Iniciar Examen'
+      );
+      if (ok) {
+        startSession(Curriculum.getPlacementTest());
+      }
+    });
+  }
+
   if (btnToggleSubtitles) {
     btnToggleSubtitles.addEventListener('click', (e) => {
-      e.stopPropagation(); // Evitar disparar el click de la tarjeta
+      e.stopPropagation();
       isSubtitlesRevealed = !isSubtitlesRevealed;
       updateSubtitlesVisibility();
     });
   }
 
-  // Botón de Envío Inmediato ("🚀 Enviar ahora" sin esperar los 2.8s de silencio)
   if (btnSubmitTurn) {
     btnSubmitTurn.addEventListener('click', (e) => {
       e.stopPropagation();
       if (currentVoiceEngine && !currentVoiceEngine.isAiSpeaking && !currentVoiceEngine.isAiResponding) {
-        btnSubmitTurn.style.display = 'none';
+        btnSubmitTurn.hidden = true;
         currentVoiceEngine.commitUserTurnNow();
       }
     });
@@ -334,12 +461,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  // Tap-to-Talk Shield: Tocar la tarjeta activa el micrófono en Safari y Android Samsung
   if (liveSpeechCard) {
     liveSpeechCard.addEventListener('click', () => {
       if (currentVoiceEngine && !currentVoiceEngine.isAiSpeaking && !currentVoiceEngine.isAiResponding) {
         currentVoiceEngine.startListeningSafely();
-        speechStatusPill.innerHTML = `<span>🟢</span> <span>Micrófono reactivado</span>`;
+        speechStatusPill.innerHTML = `<span>●</span> <span>Micrófono reactivado</span>`;
       }
     });
   }
@@ -347,7 +473,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   async function startSession(scenario) {
     const apiKey = Config.getApiKey();
     if (!apiKey) {
-      alert('Por favor ingresa tu API Key de Gemini en el engrane ⚙️.');
+      showToast('Configura tu API Key de Gemini antes de iniciar.', 'warning');
       openSettings();
       return;
     }
@@ -356,12 +482,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     sessionTimerDigits.textContent = '10:00';
     wrapUpBanner.classList.remove('visible');
 
-    // Estado inicial de la tarjeta
     liveSpeechCard.className = 'live-speech-card speaking';
     speechStatusPill.innerHTML = `<span>⏳</span> <span>Conectando con Emma...</span>`;
     liveTranscriptText.textContent = 'Iniciando conversación en audio de alta fidelidad...';
-    btnToggleSubtitles.style.display = 'none';
-    if (btnSubmitTurn) btnSubmitTurn.style.display = 'none';
+    btnToggleSubtitles.hidden = true;
+    if (btnSubmitTurn) btnSubmitTurn.hidden = true;
     isSubtitlesRevealed = false;
 
     switchView('session');
@@ -372,9 +497,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       apiKey: apiKey,
       mode: Config.isDriveMode() ? 'DRIVE' : 'NORMAL',
       maxDurationSeconds: 600,
-      silenceDelayMs: Config.getPauseDelay(), // Pausa adaptativa (2.8s por defecto)
-      userLevel: Config.getLevel(), // Para calibrar velocidad de voz (0.90x -> 1.04x) y complejidad
-      pendingMistakes: Config.getPendingMistakes(), // Memoria activa de errores pasados
+      silenceDelayMs: Config.getPauseDelay(),
+      userLevel: Config.getLevel(),
+      pendingMistakes: Config.getPendingMistakes(),
       onTimerTick: (timeData) => {
         sessionTimerDigits.textContent = timeData.formatted;
       },
@@ -387,44 +512,42 @@ document.addEventListener('DOMContentLoaded', async () => {
         speechStatusPill.innerHTML = `<span>🎤</span> <span>Escuchándote...</span>`;
         liveTranscriptText.classList.remove('blind-mode');
         liveTranscriptText.classList.add('revealed');
-        liveTranscriptText.innerHTML = `<span style="color: var(--success); font-weight: 600;">🎤 Tú:</span> "${escapeHtml(text)}"`;
-        btnToggleSubtitles.style.display = 'none';
-        if (btnSubmitTurn) btnSubmitTurn.style.display = 'inline-flex';
+        liveTranscriptText.innerHTML = `<span class="speech-user-tag">🎤 Tú:</span> "${escapeHtml(text)}"`;
+        btnToggleSubtitles.hidden = true;
+        if (btnSubmitTurn) btnSubmitTurn.hidden = false;
       },
       onAiResponseStarted: () => {
         liveSpeechCard.className = 'live-speech-card thinking';
         speechStatusPill.innerHTML = `<span>⏳</span> <span>${escapeHtml(scenario.aiRole.split(',')[0])} está pensando...</span>`;
         liveTranscriptText.classList.remove('blind-mode');
         liveTranscriptText.textContent = 'Formulando respuesta natural...';
-        btnToggleSubtitles.style.display = 'none';
-        if (btnSubmitTurn) btnSubmitTurn.style.display = 'none';
+        btnToggleSubtitles.hidden = true;
+        if (btnSubmitTurn) btnSubmitTurn.hidden = true;
         animateWaveThinking();
       },
       onAiResponseFinished: (aiText) => {
-        // En Modo Oído Puro, colocamos el texto pero con efecto blur
-        liveTranscriptText.innerHTML = `<span style="color: var(--accent-light); font-weight: 600;">🗣️ Emma:</span> "${escapeHtml(aiText)}"`;
+        liveTranscriptText.innerHTML = `<span class="speech-coach-tag">🗣️ Emma:</span> "${escapeHtml(aiText)}"`;
       },
-      onStatusChanged: (status, meta = {}) => {
+      onStatusChanged: (status) => {
         if (status === 'speaking') {
           liveSpeechCard.className = 'live-speech-card speaking';
           speechStatusPill.innerHTML = `<span>●</span> <span>Emma hablando... (Escucha atenta)</span>`;
           isSubtitlesRevealed = false;
           updateSubtitlesVisibility();
-          btnToggleSubtitles.style.display = 'inline-flex';
-          if (btnSubmitTurn) btnSubmitTurn.style.display = 'none';
+          btnToggleSubtitles.hidden = false;
+          if (btnSubmitTurn) btnSubmitTurn.hidden = true;
         } else if (status === 'listening') {
           liveSpeechCard.className = 'live-speech-card listening';
           speechStatusPill.innerHTML = `<span>●</span> <span>TU TURNO: Te escucho</span>`;
-          liveTranscriptText.classList.remove('blind-mode');
-          liveTranscriptText.classList.remove('revealed');
-          liveTranscriptText.innerHTML = `<span style="color: var(--text-muted); font-style: italic;">Habla con naturalidad por tu micrófono o Bluetooth (o toca aquí)...</span>`;
-          btnToggleSubtitles.style.display = 'none';
-          if (btnSubmitTurn) btnSubmitTurn.style.display = 'none';
+          liveTranscriptText.classList.remove('blind-mode', 'revealed');
+          liveTranscriptText.innerHTML = `<span class="speech-placeholder">Habla con naturalidad por tu micrófono o Bluetooth (o toca aquí)...</span>`;
+          btnToggleSubtitles.hidden = true;
+          if (btnSubmitTurn) btnSubmitTurn.hidden = true;
         } else if (status === 'thinking') {
           liveSpeechCard.className = 'live-speech-card thinking';
           speechStatusPill.innerHTML = `<span>⏳</span> <span>Procesando...</span>`;
-          btnToggleSubtitles.style.display = 'none';
-          if (btnSubmitTurn) btnSubmitTurn.style.display = 'none';
+          btnToggleSubtitles.hidden = true;
+          if (btnSubmitTurn) btnSubmitTurn.hidden = true;
         }
       },
       onSessionFinished: async (sessionResult) => {
@@ -434,7 +557,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       onError: (err) => {
         console.warn('[Session] Aviso:', err.message);
         speechStatusPill.innerHTML = `<span>⚠️</span> <span>Aviso de conexión</span>`;
-        liveTranscriptText.innerHTML = `<span style="color: var(--danger);">${escapeHtml(err.message)}</span>`;
+        liveTranscriptText.innerHTML = `<span class="speech-error">${escapeHtml(err.message)}</span>`;
       }
     });
 
@@ -456,11 +579,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  btnEndSession.addEventListener('click', () => {
-    if (confirm('¿Deseas finalizar la sesión y generar tu corrección completa ahora?')) {
-      if (currentVoiceEngine) {
-        currentVoiceEngine.stop(false);
-      }
+  btnEndSession.addEventListener('click', async () => {
+    const confirmed = await askConfirm(
+      '¿Deseas finalizar la sesión y generar tu auditoría CEFR ahora?',
+      'Finalizar y Evaluar'
+    );
+    if (confirmed && currentVoiceEngine) {
+      currentVoiceEngine.stop(false);
     }
   });
 
@@ -477,15 +602,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     const bars = waveVisualizer.querySelectorAll('.wave-bar');
     bars.forEach((bar, idx) => {
       const factor = Math.sin((idx / bars.length) * Math.PI);
-      const height = Math.max(12, Math.min(75, volume * 350 * factor));
-      bar.style.height = `${height}px`;
+      const scale = Math.max(0.22, Math.min(1.0, volume * 4.5 * factor));
+      bar.style.transform = `scaleY(${scale.toFixed(3)})`;
     });
   }
 
   function animateWaveThinking() {
     const bars = waveVisualizer.querySelectorAll('.wave-bar');
     bars.forEach((bar, idx) => {
-      bar.style.height = `${20 + (idx % 3) * 15}px`;
+      const scale = 0.32 + (idx % 3) * 0.18;
+      bar.style.transform = `scaleY(${scale.toFixed(2)})`;
     });
   }
 
@@ -493,10 +619,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     return (typeof val === 'number' && !Number.isNaN(val)) ? val : '--';
   }
 
+  function setReportLoading(isLoading) {
+    if (reportSkeleton) reportSkeleton.hidden = !isLoading;
+    if (reportMainContent) reportMainContent.hidden = isLoading;
+  }
+
   async function processEvaluationResult(sessionResult, evaluation) {
     latestGeneratedReport = evaluation.report;
 
-    // Solo persistir nivel/scores/banco de errores si el análisis real tuvo éxito
     if (evaluation.success && !latestGeneratedReport.isErrorReport) {
       if (sessionResult.scenario.id === 'placement_test' && latestGeneratedReport.placement) {
         const assignedLevel = latestGeneratedReport.placement.assignedLevel || 'B1';
@@ -509,28 +639,31 @@ document.addEventListener('DOMContentLoaded', async () => {
         const levelUpCheck = Config.recordSessionScore(overallScore);
         if (levelUpCheck && levelUpCheck.shouldLevelUp) {
           Config.setLevel(levelUpCheck.nextLevel);
-          setTimeout(() => {
-            alert(`¡Felicidades! Por tu promedio (${levelUpCheck.averageScore}/100), subiste de ${levelUpCheck.currentLevel} a ${levelUpCheck.nextLevel}.`);
-          }, 600);
+          showToast(
+            `¡Subiste de ${levelUpCheck.currentLevel} a ${levelUpCheck.nextLevel}! Promedio: ${levelUpCheck.averageScore}/100`,
+            'success',
+            5500
+          );
         }
       }
       updateUserBadge();
+      updateStatsBar();
       renderScenarios();
     } else {
       console.warn('[Evaluation] No se guardaron calificaciones porque falló la evaluación real:', evaluation.error);
     }
 
+    setReportLoading(false);
     renderReport(sessionResult.scenario, latestGeneratedReport, sessionResult);
   }
 
   async function handleSessionCompleted(sessionResult) {
-    speechStatusPill.innerHTML = `<span>📊</span> <span>Generando Diagnóstico Forense...</span>`;
-    liveTranscriptText.textContent = 'Analizando gramática, vocabulario y pronunciación en Gemini...';
-
-    const apiKey = Config.getApiKey();
-    const evaluation = await Evaluator.analyzeSession(sessionResult, apiKey);
-    await processEvaluationResult(sessionResult, evaluation);
+    reportScenarioTitle.textContent = sessionResult.scenario.title;
+    setReportLoading(true);
     switchView('report');
+
+    const evaluation = await Evaluator.analyzeSession(sessionResult, Config.getApiKey());
+    await processEvaluationResult(sessionResult, evaluation);
 
     if (
       Config.isDriveMode() &&
@@ -549,13 +682,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     btnRetryEvaluation.addEventListener('click', async () => {
       if (!latestSessionResult) return;
       btnRetryEvaluation.disabled = true;
-      btnRetryEvaluation.textContent = 'Reintentando...';
+      setReportLoading(true);
       try {
         const evaluation = await Evaluator.analyzeSession(latestSessionResult, Config.getApiKey());
         await processEvaluationResult(latestSessionResult, evaluation);
       } finally {
         btnRetryEvaluation.disabled = false;
-        btnRetryEvaluation.textContent = 'Reintentar análisis';
       }
     });
   }
@@ -571,7 +703,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const parts = [];
     if (report.executiveSummary) {
       parts.push(`
-        <div style="margin-bottom: 8px;">
+        <div class="summary-block">
           <div class="summary-section-title">Diagnóstico del Coach</div>
           <div>${escapeHtml(report.executiveSummary)}</div>
         </div>
@@ -580,9 +712,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (report.placement && report.placement.assignedLevel) {
       parts.push(`
-        <div style="margin-bottom: 8px;">
+        <div class="summary-block">
           <div class="summary-section-title">Nivel Asignado: ${escapeHtml(report.placement.assignedLevel)}</div>
-          <div style="color: var(--text-muted);">${escapeHtml(report.placement.rationale || '')}</div>
+          <div class="summary-muted">${escapeHtml(report.placement.rationale || '')}</div>
         </div>
       `);
     }
@@ -593,7 +725,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       metaBlocks.push(`
         <div>
           <div class="summary-section-title">Fortalezas</div>
-          <ul style="padding-left: 16px; color: var(--text-main);">${list}</ul>
+          <ul class="summary-list">${list}</ul>
         </div>
       `);
     }
@@ -602,7 +734,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       metaBlocks.push(`
         <div>
           <div class="summary-section-title">Reto para tu próxima sesión</div>
-          <div style="color: var(--text-main);">${escapeHtml(report.homeworkChallenge)}</div>
+          <div>${escapeHtml(report.homeworkChallenge)}</div>
         </div>
       `);
     }
@@ -633,7 +765,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     if (btnListenSummary) {
-      btnListenSummary.style.display = (!isError && report && report.spokenSummary) ? 'inline-flex' : 'none';
+      btnListenSummary.hidden = !(!isError && report && report.spokenSummary);
     }
 
     scoreOverall.textContent = formatScore(scores.overall);
@@ -650,7 +782,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const item = document.createElement('div');
         item.className = 'audit-card';
         item.innerHTML = `
-          <div style="font-size: 0.72rem; font-weight: 700; color: var(--accent-light); margin-bottom: 5px; text-transform: uppercase;">${escapeHtml(g.rule || 'Regla gramatical')}</div>
+          <div class="audit-rule-title">${escapeHtml(g.rule || 'Regla gramatical')}</div>
           <div class="diff-original">✗ Tú dijiste: "${escapeHtml(g.original)}"</div>
           <div class="diff-corrected">✓ Lo correcto: "${escapeHtml(g.corrected)}"</div>
           <div class="diff-explanation">Explicación: ${escapeHtml(g.explanation)}</div>
@@ -659,7 +791,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
     } else {
       tabGrammar.innerHTML = isError
-        ? '<div class="audit-card">Análisis gramatical no disponible porque la evaluación falló. Puedes revisar tu transcripción o pulsar "Reintentar análisis".</div>'
+        ? '<div class="audit-card">Análisis gramatical no disponible porque la evaluación falló. Revisa tu transcripción o pulsa "Reintentar Auditoría con Gemini".</div>'
         : '<div class="audit-card">Sin correcciones gramaticales mayores detectadas en esta sesión.</div>';
     }
 
@@ -672,9 +804,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       const fillerCard = document.createElement('div');
       fillerCard.className = 'audit-card';
       const pills = report.fillerWords
-        .map(f => `<span style="background: var(--bg-secondary); border: 1px solid var(--border); color: var(--warning); padding: 3px 8px; border-radius: 6px; font-size: 0.74rem; margin-right: 6px; display: inline-block; margin-bottom: 4px;">"${escapeHtml(f.word)}" (${f.count}x)</span>`)
+        .map(f => `<span class="filler-pill">"${escapeHtml(f.word)}" (${f.count}x)</span>`)
         .join('');
-      fillerCard.innerHTML = `<div style="font-weight: 600; margin-bottom: 6px; font-size: 0.8rem;">Muletillas detectadas (Filler Words):</div><div>${pills}</div>`;
+      fillerCard.innerHTML = `<div class="filler-title">Muletillas detectadas (Filler Words):</div><div>${pills}</div>`;
       tabVocabulary.appendChild(fillerCard);
     }
 
@@ -683,7 +815,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const item = document.createElement('div');
         item.className = 'audit-card';
         item.innerHTML = `
-          <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 6px;">Frase dicha: "${escapeHtml(v.original)}"</div>
+          <div class="summary-muted summary-block">Frase dicha: "${escapeHtml(v.original)}"</div>
           <div class="diff-corrected">Opción Nativa Informal: "${escapeHtml(v.nativeAlternative)}"</div>
           <div class="diff-upgrade">Opción Ejecutiva: "${escapeHtml(v.businessAlternative)}"</div>
           <div class="diff-explanation">${escapeHtml(v.reason || 'Eleva tu precisión léxica')}</div>
@@ -702,16 +834,15 @@ document.addEventListener('DOMContentLoaded', async () => {
       report.pronunciationAudit.forEach(p => {
         const item = document.createElement('div');
         item.className = 'audit-card';
-
         item.innerHTML = `
-          <div class="pronounce-row" style="margin-bottom: 6px;">
+          <div class="pronounce-row">
             <div>
               <span class="pronounce-word">${escapeHtml(p.word)}</span>
               <span class="pronounce-ipa">${escapeHtml(p.ipa || '')}</span>
-              <div style="font-size: 0.78rem; color: var(--warning);">Cómo suena: <b>${escapeHtml(p.figuredPronunciation || '')}</b></div>
+              <div class="pronounce-sound">Cómo suena: <b>${escapeHtml(p.figuredPronunciation || '')}</b></div>
             </div>
-            <div style="display: flex; gap: 6px;">
-              <button class="pronounce-audio-btn btn-play-native" data-word="${escapeHtml(p.word)}">🔊 Escuchar</button>
+            <div class="pronounce-actions">
+              <button class="pronounce-audio-btn btn-play-native" type="button" data-word="${escapeHtml(p.word)}">🔊 Escuchar</button>
             </div>
           </div>
           <div class="diff-explanation">Articulación: ${escapeHtml(p.phoneticTip || '')}</div>
@@ -740,7 +871,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const row = document.createElement('div');
         const isCoach = (h.role === 'assistant');
         row.className = `chat-bubble-row ${isCoach ? 'coach' : 'user'}`;
-        
+
         const minutes = Math.floor((h.timestamp || 0) / 60);
         const seconds = ((h.timestamp || 0) % 60).toString().padStart(2, '0');
         const timeLabel = `${minutes}:${seconds}`;
@@ -768,18 +899,20 @@ document.addEventListener('DOMContentLoaded', async () => {
       reportTabBtns.forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       const target = btn.dataset.tab;
-      tabGrammar.style.display = target === 'grammar' ? 'block' : 'none';
-      tabVocabulary.style.display = target === 'vocabulary' ? 'block' : 'none';
-      tabPronunciation.style.display = target === 'pronunciation' ? 'block' : 'none';
-      tabTranscript.style.display = target === 'transcript' ? 'block' : 'none';
+      tabGrammar.hidden = target !== 'grammar';
+      tabVocabulary.hidden = target !== 'vocabulary';
+      tabPronunciation.hidden = target !== 'pronunciation';
+      tabTranscript.hidden = target !== 'transcript';
     });
   });
 
-  btnListenSummary.addEventListener('click', () => {
-    if (latestGeneratedReport && latestGeneratedReport.spokenSummary) {
-      speakSummary(latestGeneratedReport.spokenSummary);
-    }
-  });
+  if (btnListenSummary) {
+    btnListenSummary.addEventListener('click', () => {
+      if (latestGeneratedReport && !latestGeneratedReport.isErrorReport && latestGeneratedReport.spokenSummary) {
+        speakSummary(latestGeneratedReport.spokenSummary);
+      }
+    });
+  }
 
   function speakSummary(text) {
     if (!window.speechSynthesis) return;
@@ -801,6 +934,74 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   btnBackHome.addEventListener('click', () => switchView('home'));
 
+  // Modal de Historial & Banco de Errores
+  async function openHistoryModal() {
+    if (!modalHistory) return;
+    renderMistakesModalList();
+    historySessionsList.innerHTML = '<div class="history-item-meta">Cargando historial desde Google Sheets...</div>';
+    openDialog(modalHistory);
+
+    const res = await SyncService.fetchHistory();
+    historySessionsList.innerHTML = '';
+    if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
+      res.data.forEach(item => {
+        const row = document.createElement('div');
+        row.className = 'history-item';
+        const dateLabel = item.date ? String(item.date).slice(0, 10) : '';
+        const overall = (item.scores && item.scores.overall !== '' && item.scores.overall !== null)
+          ? `${item.scores.overall}/100`
+          : '--';
+        row.innerHTML = `
+          <div>
+            <div class="history-item-title">${escapeHtml(item.scenarioTitle || 'Sesión')}</div>
+            <div class="history-item-meta">${escapeHtml(dateLabel)} · ${Math.round((Number(item.durationSeconds) || 0) / 60)} min</div>
+          </div>
+          <span class="history-score-pill">${escapeHtml(overall)}</span>
+        `;
+        historySessionsList.appendChild(row);
+      });
+    } else {
+      const msg = (res && res.error) ? res.error : 'Aún no hay sesiones guardadas en tu Sheet.';
+      historySessionsList.innerHTML = `<div class="history-item-meta">${escapeHtml(msg)}</div>`;
+    }
+  }
+
+  function renderMistakesModalList() {
+    if (!historyMistakesList) return;
+    const mistakes = Config.getPendingMistakes();
+    historyMistakesList.innerHTML = '';
+
+    if (mistakes.length === 0) {
+      historyMistakesList.innerHTML = '<div class="history-item-meta">No tienes errores pendientes en el banco actual.</div>';
+      return;
+    }
+
+    mistakes.forEach(m => {
+      const row = document.createElement('div');
+      row.className = 'mistake-row';
+      row.innerHTML = `
+        <div>
+          <div class="history-item-title">✓ "${escapeHtml(m.correction || '')}"</div>
+          <div class="history-item-meta">Dijiste: "${escapeHtml(m.original || '')}"</div>
+        </div>
+        <button class="btn-ghost-xs btn-master-mistake" type="button">Dominado</button>
+      `;
+      const btn = row.querySelector('.btn-master-mistake');
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        await SyncService.markMistakeMastered(m.id, m.original);
+        renderMistakesModalList();
+        updateStatsBar();
+        renderScenarios();
+        showToast('Punto marcado como dominado.', 'success');
+      });
+      historyMistakesList.appendChild(row);
+    });
+  }
+
+  if (btnHistory) btnHistory.addEventListener('click', openHistoryModal);
+  if (btnCloseHistory) btnCloseHistory.addEventListener('click', () => closeDialog(modalHistory));
+
   function openSettings() {
     inputApiKey.value = Config.getApiKey();
     inputGasUrl.value = Config.getGasUrl();
@@ -808,11 +1009,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (selectPauseDelay) {
       selectPauseDelay.value = Config.getPauseDelay().toString();
     }
-    modalSettings.classList.add('active');
+    openDialog(modalSettings);
   }
 
   btnSettings.addEventListener('click', openSettings);
-  btnCloseSettings.addEventListener('click', () => modalSettings.classList.remove('active'));
+  btnCloseSettings.addEventListener('click', () => closeDialog(modalSettings));
 
   btnSaveSettings.addEventListener('click', async () => {
     const key = inputApiKey.value.trim();
@@ -825,20 +1026,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     Config.setPin(pin);
     Config.setPauseDelay(pauseDelay);
 
-    modalSettings.classList.remove('active');
-    alert('Configuración guardada correctamente.');
+    closeDialog(modalSettings);
+    showToast('Configuración guardada correctamente.', 'success');
 
-    if (gas) {
+    if (gas && pin) {
       await syncWithCloud();
+      await SyncService.flushQueue();
     }
   });
 
-  // Auto-Recuperación de Visibilidad: Si la pantalla se bloqueó o cambió de pestaña y regresa
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
       console.log('[Visibility] Pantalla activa de nuevo.');
       if (currentVoiceEngine && currentVoiceEngine.isSessionActive) {
-        // Si el coach no está hablando ni pensando, reactivar micrófono
         if (!currentVoiceEngine.isAiSpeaking && !currentVoiceEngine.isAiResponding) {
           currentVoiceEngine.startListeningSafely();
         }
@@ -846,4 +1046,3 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 });
-

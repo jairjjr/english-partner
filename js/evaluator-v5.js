@@ -72,14 +72,18 @@ const Evaluator = {
       generationConfig.responseMimeType = 'application/json';
     }
 
-    const response = await fetch(url, {
+    const doFetch = (typeof Config !== 'undefined' && Config.fetchWithTimeout)
+      ? Config.fetchWithTimeout.bind(Config)
+      : fetch;
+
+    const response = await doFetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig
       })
-    });
+    }, 25000);
 
     if (!response.ok) {
       const errBody = await response.text();

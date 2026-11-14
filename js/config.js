@@ -4,8 +4,8 @@
 const Config = {
   // Configuración predeterminada para tu aplicación
   DEFAULT_GAS_URL: 'https://script.google.com/macros/s/AKfycbx4P1vL7VYbu5upoMaNfq_M61LYMTQ5S9arKhJRGCSucEU0sJDtYTqKF9AS0yL9jI7U/exec',
-  DEFAULT_API_KEY: '', // Se descarga automáticamente y de forma segura desde tu Google Apps Script privado
-  DEFAULT_PIN: '8619',
+  DEFAULT_API_KEY: '', // Se descarga automáticamente desde tu Google Apps Script privado o se ingresa en Ajustes
+  DEFAULT_PIN: '', // No se expone el PIN en código fuente público; ingrésalo en Ajustes al conectar un dispositivo
 
   KEYS: {
     API_KEY: 'ep_gemini_api_key',
@@ -18,7 +18,29 @@ const Config = {
     PAUSE_DELAY: 'ep_pause_delay_ms',
     PENDING_MISTAKES: 'ep_pending_mistakes',
     COMPLETED_SCENARIOS: 'ep_completed_scenarios',
-    RECENT_SCORES: 'ep_recent_scores'
+    RECENT_SCORES: 'ep_recent_scores',
+    USER_STATS: 'ep_user_stats'
+  },
+
+  /**
+   * Fetch resiliente con AbortController para evitar bloqueos en redes móviles inestables
+   */
+  async fetchWithTimeout(url, options = {}, timeoutMs = 20000) {
+    if (typeof AbortController === 'undefined') {
+      return await fetch(url, options);
+    }
+    const controller = new AbortController();
+    const timerId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(url, { ...options, signal: controller.signal });
+    } catch (err) {
+      if (err && err.name === 'AbortError') {
+        throw new Error(`Tiempo de espera agotado (${Math.round(timeoutMs / 1000)}s). Verifica tu señal.`);
+      }
+      throw err;
+    } finally {
+      clearTimeout(timerId);
+    }
   },
 
   getPendingMistakes() {
@@ -174,7 +196,46 @@ const Config = {
   },
 
   setPin(pin) {
-    localStorage.setItem(this.KEYS.PIN, (pin || '1234').trim());
+    if (pin && pin.trim()) {
+      localStorage.setItem(this.KEYS.PIN, pin.trim());
+    } else {
+      localStorage.removeItem(this.KEYS.PIN);
+    }
+  },
+
+  markMistakeMasteredLocally(errorId, originalText) {
+    const list = this.getPendingMistakes().filter(m => {
+      if (errorId && m.id && m.id === errorId) return false;
+      if (originalText && m.original === originalText) return false;
+      return true;
+    });
+    this.setPendingMistakes(list);
+    return list;
+  },
+
+  getStats() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(this.KEYS.USER_STATS) || '{}');
+      return {
+        totalSessions: Number(raw.totalSessions) || 0,
+        totalMinutes: Number(raw.totalMinutes) || 0
+      };
+    } catch (e) {
+      return { totalSessions: 0, totalMinutes: 0 };
+    }
+  },
+
+  setStats(totalSessions, totalMinutes) {
+    localStorage.setItem(this.KEYS.USER_STATS, JSON.stringify({
+      totalSessions: Math.max(0, Number(totalSessions) || 0),
+      totalMinutes: Math.max(0, Number(totalMinutes) || 0)
+    }));
+  },
+
+  incrementLocalStats(durationSeconds) {
+    const cur = this.getStats();
+    const addedMin = Math.max(1, Math.round((Number(durationSeconds) || 0) / 60));
+    this.setStats(cur.totalSessions + 1, cur.totalMinutes + addedMin);
   },
 
   getLevel() {

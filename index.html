@@ -2,19 +2,22 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>English Partner - AI Voice English Coach</title>
   <meta name="description" content="Entrenador conversacional de inglés por voz de 10 minutos con diagnóstico de gramática, vocabulario y pronunciación.">
   <link rel="manifest" href="./manifest.json">
+  <link rel="apple-touch-icon" href="./assets/icon-192.png">
   <meta name="theme-color" content="#050506">
-  <link rel="stylesheet" href="./css/styles.css?v=8.0">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="stylesheet" href="./css/styles.css?v=8.1">
 </head>
 <body>
 
   <!-- HEADER SUPERIOR -->
-  <header>
+  <header id="app-header">
     <div class="logo-area">
-      <div class="logo-icon">🎙️</div>
+      <div class="logo-icon" aria-hidden="true">🎙️</div>
       <div>
         <h1 class="logo-title">English Partner</h1>
         <p class="logo-subtitle">AI Conversational Coach</p>
@@ -22,22 +25,35 @@
     </div>
 
     <div class="header-controls">
-      <span id="user-level-badge" class="level-tag" style="display: inline-block;">Nivel: Evaluando...</span>
-      <button id="btn-drive-toggle" class="btn-drive-toggle" title="Activa o desactiva botones grandes y pantalla negra para manejar">
+      <span id="user-level-badge" class="level-tag header-level-badge">Nivel: Evaluando...</span>
+      <button id="btn-drive-toggle" class="btn-drive-toggle" type="button" title="Activa o desactiva botones grandes y pantalla negra para manejar">
         🚗 Modo Camioneta
       </button>
-      <button id="btn-settings" class="btn-icon" title="Configurar API Key y Google Sheet">⚙️</button>
+      <button id="btn-history" class="btn-icon" type="button" title="Ver historial de sesiones y errores" aria-label="Ver historial de sesiones">📊</button>
+      <button id="btn-settings" class="btn-icon" type="button" title="Configurar API Key, PIN y Google Sheet" aria-label="Abrir configuración">⚙️</button>
     </div>
   </header>
 
   <!-- CONTENEDOR PRINCIPAL -->
-  <main>
+  <main id="app-main">
 
     <!-- ==========================================
          VISTA 1: HOME Y CATÁLOGO DE LECCIONES
          ========================================== -->
     <section id="view-home" class="view-panel active">
-      
+
+      <!-- BARRA COMPACTA DE PROGRESO Y ACCIONES -->
+      <div id="home-stats-bar" class="home-stats-bar">
+        <div class="stats-metrics">
+          <span class="stat-chip">Sesiones: <strong id="stat-sessions">0</strong></span>
+          <span class="stat-chip">Práctica: <strong id="stat-minutes">0m</strong></span>
+          <span class="stat-chip">Por pulir: <strong id="stat-mistakes">0</strong></span>
+        </div>
+        <button id="btn-retake-placement" class="btn-ghost-xs" type="button" hidden>
+          Recalibrar Nivel
+        </button>
+      </div>
+
       <!-- BANNER DE PLACEMENT TEST (EXAMEN INICIAL) -->
       <div id="placement-banner" class="placement-banner">
         <div>
@@ -47,18 +63,18 @@
             Conversa 7-10 minutos con Emma para diagnosticar tu nivel real (A2, B1, B2 o C1) y calibrar tu plan.
           </p>
         </div>
-        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-          <button id="btn-test-voice" class="btn-secondary" style="white-space: nowrap;">
+        <div class="actions-row">
+          <button id="btn-test-voice" class="btn-secondary btn-nowrap" type="button">
             🔊 Probar Voz
           </button>
-          <button id="btn-start-placement" class="btn-primary" style="white-space: nowrap;">
+          <button id="btn-start-placement" class="btn-primary btn-nowrap" type="button">
             🚀 Iniciar Examen
           </button>
         </div>
       </div>
 
       <!-- FILTRO DE CATEGORÍAS -->
-      <div id="category-tabs" class="category-tabs">
+      <div id="category-tabs" class="category-tabs" role="tablist" aria-label="Categorías de lecciones">
         <!-- Renderizado dinámicamente con curriculum.js -->
       </div>
 
@@ -74,7 +90,7 @@
          ========================================== -->
     <section id="view-session" class="view-panel">
       <div class="voice-room">
-        
+
         <h2 id="session-scenario-title" class="session-title">
           Sesión de Conversación
         </h2>
@@ -89,27 +105,27 @@
         </div>
 
         <!-- AVISO COORDINADO AL MINUTO 8:00 (FALTAN 2 MINUTOS) -->
-        <div id="wrap-up-banner" class="wrap-up-banner">
+        <div id="wrap-up-banner" class="wrap-up-banner" role="status">
           <span>⚠️ <b>Quedan 2 minutos:</b> El coach y tú comenzarán a concluir el tema y despedirse naturalmente.</span>
         </div>
 
-        <!-- VISUALIZADOR DE ONDAS REACTIVAS -->
-        <div id="wave-visualizer" class="wave-visualizer">
-          <!-- Barras generadas por app.js -->
+        <!-- VISUALIZADOR DE ONDAS REACTIVAS (GPU scaleY) -->
+        <div id="wave-visualizer" class="wave-visualizer" aria-hidden="true">
+          <!-- Barras generadas por app-v7.js -->
         </div>
 
-        <!-- TRANSCRIPCIÓN Y ESTADO DEL COACH EN VIVO (MODO OÍDO PURO & TAP-TO-TALK SHIELD) -->
-        <div id="live-speech-card" class="live-speech-card" title="Toca aquí en cualquier momento para hablar">
-          <div id="speech-status-pill" class="speech-status-pill">
+        <!-- TRANSCRIPCIÓN Y ESTADO DEL COACH EN VIVO -->
+        <div id="live-speech-card" class="live-speech-card" title="Toca aquí en cualquier momento para reactivar el micrófono">
+          <div id="speech-status-pill" class="speech-status-pill" aria-live="polite">
             <span>⏳</span> <span>Iniciando sesión...</span>
           </div>
           <div class="speech-subtitles-area">
             <p id="live-transcript-text" class="subtitles-text">Conectando micrófono y coach...</p>
-            <div style="display: flex; gap: 6px; flex-wrap: wrap; justify-content: center;">
-              <button id="btn-toggle-subtitles" class="btn-subtitles-toggle" type="button" style="display: none;">
+            <div class="actions-row actions-center">
+              <button id="btn-toggle-subtitles" class="btn-subtitles-toggle" type="button" hidden>
                 👁️ Ver subtítulo
               </button>
-              <button id="btn-submit-turn" class="btn-submit-turn" type="button" style="display: none;">
+              <button id="btn-submit-turn" class="btn-submit-turn" type="button" hidden>
                 🚀 Enviar ahora
               </button>
             </div>
@@ -118,10 +134,10 @@
 
         <!-- BOTONES DE CONTROL DE SESIÓN DE VOZ -->
         <div class="voice-actions">
-          <button id="btn-replay-ai" class="btn-secondary btn-voice-action">
+          <button id="btn-replay-ai" class="btn-secondary btn-voice-action" type="button">
             🔊 Repetir Voz
           </button>
-          <button id="btn-end-session" class="btn-voice-end">
+          <button id="btn-end-session" class="btn-voice-end" type="button">
             ⏹️ Finalizar y Evaluar
           </button>
         </div>
@@ -143,81 +159,93 @@
         </p>
       </div>
 
-      <!-- BANNER DE ERROR / REINTENTO (SI FALLA LA AUDITORÍA GEMINI) -->
-      <div id="report-error-banner" class="report-error-banner">
-        <div>
-          <b>⚠️ No se pudo generar la evaluación automática:</b>
-          <p id="report-error-message" style="margin-top: 4px;"></p>
+      <!-- SKELETON LOADING MIENTRAS GEMINI AUDITA (ZERO CLS) -->
+      <div id="report-skeleton" class="report-skeleton" hidden aria-busy="true" aria-label="Analizando sesión con Gemini">
+        <div class="scores-grid">
+          <div class="score-badge-card"><div class="skeleton skeleton-num"></div><div class="skeleton skeleton-label"></div></div>
+          <div class="score-badge-card"><div class="skeleton skeleton-num"></div><div class="skeleton skeleton-label"></div></div>
+          <div class="score-badge-card"><div class="skeleton skeleton-num"></div><div class="skeleton skeleton-label"></div></div>
+          <div class="score-badge-card"><div class="skeleton skeleton-num"></div><div class="skeleton skeleton-label"></div></div>
         </div>
-        <div>
-          <button id="btn-retry-evaluation" class="btn-primary" type="button">
-            🔄 Reintentar Auditoría con Gemini
+        <div class="audit-card">
+          <div class="skeleton skeleton-title"></div>
+          <div class="skeleton skeleton-line"></div>
+          <div class="skeleton skeleton-line short"></div>
+        </div>
+        <div class="audit-card">
+          <div class="skeleton skeleton-title"></div>
+          <div class="skeleton skeleton-line"></div>
+          <div class="skeleton skeleton-line"></div>
+        </div>
+      </div>
+
+      <!-- CONTENIDO REAL DEL REPORTE -->
+      <div id="report-main-content">
+        <!-- BANNER DE ERROR / REINTENTO (SI FALLA LA AUDITORÍA GEMINI) -->
+        <div id="report-error-banner" class="report-error-banner" role="alert">
+          <div>
+            <b>⚠️ No se pudo generar la evaluación automática:</b>
+            <p id="report-error-message" class="error-banner-text"></p>
+          </div>
+          <div>
+            <button id="btn-retry-evaluation" class="btn-primary" type="button">
+              🔄 Reintentar Auditoría con Gemini
+            </button>
+          </div>
+        </div>
+
+        <!-- MÉTRICAS DE PUNTUACIÓN (0 - 100) -->
+        <div class="scores-grid">
+          <div class="score-badge-card">
+            <div id="score-overall" class="score-num">--</div>
+            <div class="score-label">Global</div>
+          </div>
+          <div class="score-badge-card">
+            <div id="score-grammar" class="score-num">--</div>
+            <div class="score-label">Gramática</div>
+          </div>
+          <div class="score-badge-card">
+            <div id="score-vocabulary" class="score-num">--</div>
+            <div class="score-label">Vocabulario</div>
+          </div>
+          <div class="score-badge-card">
+            <div id="score-pronunciation" class="score-num">--</div>
+            <div class="score-label">Pronunciación</div>
+          </div>
+        </div>
+
+        <!-- RESUMEN EJECUTIVO, FORTALEZAS Y RETO -->
+        <div id="report-feedback-summary" class="report-summary-card">
+          <!-- Renderizado dinámico en app-v7.js -->
+        </div>
+
+        <!-- BOTÓN PARA ESCUCHAR RESUMEN (MODO CAMIONETA) -->
+        <div class="text-center">
+          <button id="btn-listen-summary" class="btn-listen-summary" type="button">
+            🔊 Escuchar Resumen del Coach
           </button>
         </div>
-      </div>
 
-      <!-- MÉTRICAS DE PUNTUACIÓN (0 - 100) -->
-      <div class="scores-grid">
-        <div class="score-badge-card">
-          <div id="score-overall" class="score-num">--</div>
-          <div class="score-label">Global</div>
+        <!-- SELECTOR DE LAS 4 PESTAÑAS -->
+        <div class="report-tabs" role="tablist">
+          <button class="report-tab-btn active" type="button" data-tab="grammar">📝 Gramática</button>
+          <button class="report-tab-btn" type="button" data-tab="vocabulary">📚 Vocabulario</button>
+          <button class="report-tab-btn" type="button" data-tab="pronunciation">🗣️ Pronunciación</button>
+          <button class="report-tab-btn" type="button" data-tab="transcript">📜 Transcripción</button>
         </div>
-        <div class="score-badge-card">
-          <div id="score-grammar" class="score-num">--</div>
-          <div class="score-label">Gramática</div>
+
+        <!-- CONTENIDOS DE LAS 4 PESTAÑAS -->
+        <div id="tab-content-grammar" class="tab-panel"></div>
+        <div id="tab-content-vocabulary" class="tab-panel" hidden></div>
+        <div id="tab-content-pronunciation" class="tab-panel" hidden></div>
+        <div id="tab-content-transcript" class="tab-panel" hidden></div>
+
+        <!-- BOTÓN VOLVER AL HOME -->
+        <div class="text-center report-footer-actions">
+          <button id="btn-back-home" class="btn-secondary" type="button">
+            &larr; Volver a las Lecciones
+          </button>
         </div>
-        <div class="score-badge-card">
-          <div id="score-vocabulary" class="score-num">--</div>
-          <div class="score-label">Vocabulario</div>
-        </div>
-        <div class="score-badge-card">
-          <div id="score-pronunciation" class="score-num">--</div>
-          <div class="score-label">Pronunciación</div>
-        </div>
-      </div>
-
-      <!-- RESUMEN EJECUTIVO, FORTALEZAS Y RETO -->
-      <div id="report-feedback-summary" class="report-summary-card">
-        <!-- Renderizado dinámico en app-v7.js -->
-      </div>
-
-      <!-- BOTÓN PARA ESCUCHAR RESUMEN (MODO CAMIONETA) -->
-      <div style="text-align: center;">
-        <button id="btn-listen-summary" class="btn-listen-summary">
-          🔊 Escuchar Resumen del Coach
-        </button>
-      </div>
-
-      <!-- SELECTOR DE LAS 4 PESTAÑAS (INCLUYE TRANSCRIPCIÓN COMPLETA) -->
-      <div class="report-tabs">
-        <button class="report-tab-btn active" data-tab="grammar">📝 Gramática</button>
-        <button class="report-tab-btn" data-tab="vocabulary">📚 Vocabulario</button>
-        <button class="report-tab-btn" data-tab="pronunciation">🗣️ Pronunciación</button>
-        <button class="report-tab-btn" data-tab="transcript">📜 Transcripción</button>
-      </div>
-
-      <!-- CONTENIDOS DE LAS 4 PESTAÑAS -->
-      <div id="tab-content-grammar" class="tab-panel">
-        <!-- Renderizado dinámico -->
-      </div>
-
-      <div id="tab-content-vocabulary" class="tab-panel" style="display: none;">
-        <!-- Renderizado dinámico -->
-      </div>
-
-      <div id="tab-content-pronunciation" class="tab-panel" style="display: none;">
-        <!-- Renderizado dinámico -->
-      </div>
-
-      <div id="tab-content-transcript" class="tab-panel" style="display: none;">
-        <!-- Renderizado dinámico del diálogo completo turno a turno -->
-      </div>
-
-      <!-- BOTÓN VOLVER AL HOME -->
-      <div style="text-align: center; margin: 18px 0;">
-        <button id="btn-back-home" class="btn-secondary">
-          &larr; Volver a las Lecciones
-        </button>
       </div>
     </section>
 
@@ -225,68 +253,102 @@
 
 
   <!-- ==========================================
-       MODAL DE CONFIGURACIÓN
+       MODAL NATIVO DE CONFIGURACIÓN (<dialog>)
        ========================================== -->
-  <div id="modal-settings" class="modal-overlay">
-    <div class="modal-box">
-      <h3 style="font-size: 1rem; font-weight: 700; margin-bottom: 4px;">⚙️ Configuración Personal</h3>
-      <p style="font-size: 0.76rem; color: var(--text-muted); margin-bottom: 14px;">
-        Tus credenciales se guardan localmente o se sincronizan con tu Google Apps Script privado.
+  <dialog id="modal-settings" class="obsidian-dialog" aria-labelledby="settings-title">
+    <h3 id="settings-title" class="dialog-title">⚙️ Configuración Personal</h3>
+    <p class="dialog-subtitle">
+      Tus credenciales se guardan localmente o se sincronizan con tu Google Apps Script privado.
+    </p>
+
+    <div class="form-group">
+      <label class="form-label" for="input-api-key">Gemini API Key (Google AI Studio)</label>
+      <input type="password" id="input-api-key" class="form-input" placeholder="AIzaSy..." autocomplete="off">
+      <p class="dialog-help">
+        Obtén o gestiona tu clave en <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" class="accent-link">aistudio.google.com</a>
       </p>
-
-      <div class="form-group">
-        <label class="form-label" for="input-api-key">Gemini API Key (Google AI Studio)</label>
-        <input type="password" id="input-api-key" class="form-input" placeholder="AIzaSy...">
-        <p style="font-size: 0.7rem; color: var(--text-muted); margin-top: 3px;">
-          Obtén o gestiona tu clave en <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color: var(--accent-bright);">aistudio.google.com</a>
-        </p>
-      </div>
-
-      <div class="form-group">
-        <label class="form-label" for="input-gas-url">URL de Google Apps Script Web App (Opcional)</label>
-        <input type="url" id="input-gas-url" class="form-input" placeholder="https://script.google.com/macros/s/.../exec">
-        <p style="font-size: 0.7rem; color: var(--text-muted); margin-top: 3px;">
-          Conecta con tu Google Sheet personal para guardar historial y sincronizar dispositivos.
-        </p>
-      </div>
-
-      <div class="form-group">
-        <label class="form-label" for="input-pin">PIN Personal de Seguridad</label>
-        <input type="text" id="input-pin" class="form-input" placeholder="8619">
-      </div>
-
-      <div class="form-group">
-        <label class="form-label" for="select-pause-delay">Tiempo de Pausa para Pensar (Ritmo de Conversación)</label>
-        <select id="select-pause-delay" class="form-input" style="cursor: pointer;">
-          <option value="3500">🐢 Relajado (3.5 s) - Ideal para pensar y buscar palabras</option>
-          <option value="2800" selected>⚡ Estándar (2.8 s) - Recomendado y natural</option>
-          <option value="1800">🚀 Fluido (1.8 s) - Respuestas rápidas / Avanzado</option>
-        </select>
-        <p style="font-size: 0.7rem; color: var(--text-muted); margin-top: 3px;">
-          Evita que Emma te interrumpa cuando haces pausas para buscar palabras en inglés.
-        </p>
-      </div>
-
-      <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px;">
-        <button id="btn-close-settings" class="btn-secondary">
-          Cancelar
-        </button>
-        <button id="btn-save-settings" class="btn-primary">
-          💾 Guardar
-        </button>
-      </div>
     </div>
-  </div>
+
+    <div class="form-group">
+      <label class="form-label" for="input-gas-url">URL de Google Apps Script Web App (Opcional)</label>
+      <input type="url" id="input-gas-url" class="form-input" placeholder="https://script.google.com/macros/s/.../exec">
+      <p class="dialog-help">
+        Conecta con tu Google Sheet personal para guardar historial y sincronizar dispositivos.
+      </p>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="input-pin">PIN Personal de Seguridad</label>
+      <input type="password" id="input-pin" class="form-input" inputmode="numeric" placeholder="Ingresa tu PIN privado" autocomplete="off">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="select-pause-delay">Tiempo de Pausa para Pensar (Ritmo de Conversación)</label>
+      <select id="select-pause-delay" class="form-input form-select">
+        <option value="3500">🐢 Relajado (3.5 s) - Ideal para pensar y buscar palabras</option>
+        <option value="2800" selected>⚡ Estándar (2.8 s) - Recomendado y natural</option>
+        <option value="1800">🚀 Fluido (1.8 s) - Respuestas rápidas / Avanzado</option>
+      </select>
+      <p class="dialog-help">
+        Evita que Emma te interrumpa cuando haces pausas para buscar palabras en inglés.
+      </p>
+    </div>
+
+    <div class="dialog-actions">
+      <button id="btn-close-settings" class="btn-secondary" type="button">Cancelar</button>
+      <button id="btn-save-settings" class="btn-primary" type="button">💾 Guardar</button>
+    </div>
+  </dialog>
 
 
-  <!-- ARCHIVOS JAVASCRIPT MODULARES (VERSIÓN V8.0 - OBSIDIAN COMPACT & AUDITORÍA REAL) -->
-  <script src="./js/config.js?v=8.0"></script>
-  <script src="./js/curriculum.js?v=8.0"></script>
-  <script src="./js/audio-vad.js?v=8.0"></script>
-  <script src="./js/voice-engine-v7.js?v=8.0"></script>
-  <script src="./js/evaluator-v5.js?v=8.0"></script>
-  <script src="./js/sync.js?v=8.0"></script>
-  <script src="./js/app-v7.js?v=8.0"></script>
+  <!-- ==========================================
+       MODAL NATIVO DE HISTORIAL Y BANCO DE ERRORES
+       ========================================== -->
+  <dialog id="modal-history" class="obsidian-dialog obsidian-dialog-wide" aria-labelledby="history-title">
+    <div class="dialog-header-row">
+      <div>
+        <h3 id="history-title" class="dialog-title">📊 Progreso y Banco de Errores</h3>
+        <p class="dialog-subtitle">Marca errores como dominados o revisa tus últimas sesiones.</p>
+      </div>
+      <button id="btn-close-history" class="btn-icon" type="button" aria-label="Cerrar historial">✕</button>
+    </div>
+
+    <div class="dialog-section">
+      <div class="summary-section-title">Puntos por pulir activos</div>
+      <div id="history-mistakes-list" class="history-scroll-list"></div>
+    </div>
+
+    <div class="dialog-section">
+      <div class="summary-section-title">Últimas sesiones registradas</div>
+      <div id="history-sessions-list" class="history-scroll-list"></div>
+    </div>
+  </dialog>
+
+
+  <!-- ==========================================
+       MODAL NATIVO DE CONFIRMACIÓN (SIN confirm())
+       ========================================== -->
+  <dialog id="modal-confirm" class="obsidian-dialog obsidian-dialog-sm" aria-labelledby="confirm-title">
+    <h3 id="confirm-title" class="dialog-title">Confirmar acción</h3>
+    <p id="confirm-message" class="dialog-subtitle"></p>
+    <div class="dialog-actions">
+      <button id="btn-confirm-cancel" class="btn-secondary" type="button">Seguir aquí</button>
+      <button id="btn-confirm-accept" class="btn-primary" type="button">Confirmar</button>
+    </div>
+  </dialog>
+
+
+  <!-- NOTIFICACIONES TOAST NO BLOQUEANTES -->
+  <div id="toast-container" class="toast-container" aria-live="polite" aria-atomic="true"></div>
+
+
+  <!-- ARCHIVOS JAVASCRIPT MODULARES (VERSIÓN V8.1 - PULIDO PREMIUM & BLINDAJE) -->
+  <script src="./js/config.js?v=8.1"></script>
+  <script src="./js/curriculum.js?v=8.1"></script>
+  <script src="./js/audio-vad.js?v=8.1"></script>
+  <script src="./js/voice-engine-v7.js?v=8.1"></script>
+  <script src="./js/evaluator-v5.js?v=8.1"></script>
+  <script src="./js/sync.js?v=8.1"></script>
+  <script src="./js/app-v7.js?v=8.1"></script>
 </body>
 </html>
-

@@ -130,11 +130,15 @@ class VoiceEngine {
       }
     };
 
-    const response = await fetch(url, {
+    const doFetch = (typeof Config !== 'undefined' && Config.fetchWithTimeout)
+      ? Config.fetchWithTimeout.bind(Config)
+      : fetch;
+
+    const response = await doFetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
-    });
+    }, 15000);
 
     if (!response.ok) {
       const err = await response.text();
@@ -259,7 +263,7 @@ class VoiceEngine {
 
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = 'en-US';
-      utterance.rate = 0.95;
+      utterance.rate = this.getAdaptivePlaybackRate();
       utterance.pitch = 1.0;
 
       const voices = window.speechSynthesis.getVoices() || [];
@@ -592,17 +596,32 @@ ${wrapUpDirective}
     return await this.requestGeminiWithFallback(payload);
   }
 
+  extractReplyText(data) {
+    const candidate = data && data.candidates && data.candidates[0];
+    const parts = candidate && candidate.content && candidate.content.parts;
+    if (!Array.isArray(parts)) return '';
+
+    const spokenParts = parts
+      .filter(p => p && !p.thought && typeof p.text === 'string' && p.text.trim().length > 0)
+      .map(p => p.text.trim());
+
+    return spokenParts.join(' ').trim();
+  }
+
   async requestGeminiWithFallback(payload) {
     let lastError = null;
+    const doFetch = (typeof Config !== 'undefined' && Config.fetchWithTimeout)
+      ? Config.fetchWithTimeout.bind(Config)
+      : fetch;
 
     for (const model of VERIFIED_GEMINI_MODELS) {
       try {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${this.apiKey}`;
-        const response = await fetch(url, {
+        const response = await doFetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
-        });
+        }, 15000);
 
         if (response.status === 503 || response.status === 429) {
           console.warn(`[VoiceEngine] Modelo ${model} ocupado (${response.status}). Cambiando al siguiente...`);
@@ -616,8 +635,9 @@ ${wrapUpDirective}
         }
 
         const data = await response.json();
-        if (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts[0]) {
-          return data.candidates[0].content.parts[0].text.trim();
+        const replyText = this.extractReplyText(data);
+        if (replyText) {
+          return replyText;
         }
       } catch (err) {
         lastError = err;

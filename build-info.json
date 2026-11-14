@@ -1,16 +1,17 @@
 {
   "project": "English Partner",
-  "version": "8.0.0",
-  "build_timestamp_utc": "2026-11-14T15:56:36Z",
+  "version": "8.1.0",
+  "build_timestamp_utc": "2026-11-14T16:29:00Z",
   "target_environment": "production",
   "platform": "PWA / WebKit Safari / Android Chrome / Samsung Internet",
   "tts_engine": "Google Gemini Native Studio Audio (gemini-3.8-flash-lite-tts, voice Aoede 24kHz)",
   "features": [
-    "Obsidian Ultra-Dark UI Theme (#050506) with Compact Typography & Controls (~25-30% smaller)",
-    "Real CEFR Forensic Evaluator (removed hardcoded 80 fallback, HTTP 400 responseMimeType retry, markdown JSON extraction)",
-    "VoiceEngine Pending Transcript Flush on Stop",
-    "Explicit Report Error Banner, Retry Evaluation Button, Executive Summary, Strengths & Homework Challenge Cards",
-    "Scorched Earth Service Worker & Cache Busting (?v=8.0)"
+    "Pulido Final Premium: Header blur glassmorphism, sombras multicapa, antialiased dark typography, clamp(), GPU scaleY wave visualizer",
+    "Accesibilidad y Native Feel: <dialog> nativos con inert, Toasts aria-live sin alert/confirm, Skeleton Loader Zero CLS, touch targets >=44px, safe-area-inset",
+    "Obsidian PWA Manifest (#050506) y Apple Touch Icon",
+    "Resiliencia Red/Voz: AbortController timeouts, filtro thought:true en VoiceEngine y adaptive rate en SpeechSynthesis fallback",
+    "Progreso en Home (sesiones, minutos, errores), Historial, Recalibración y marcado de errores dominados",
+    "Seguridad Backend/Frontend: eliminación de API Key y PIN literales en Code.gs y config.js + purga de 5 archivos JS muertos"
   ],
-  "verification": "jsc syntax check (8 files, exit code 0) + test_v8 unit tests passed"
+  "verification": "jsc syntax check (8 JS + Code.gs, exit code 0) + test_v8_1 unit tests + CSS/DOM/SW integrity checks passed"
 }
