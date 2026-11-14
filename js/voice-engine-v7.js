@@ -655,6 +655,18 @@ ${wrapUpDirective}
     this.isAiSpeaking = false;
     this.isAiResponding = false;
 
+    // Volcar cualquier frase pendiente que el usuario estuviera diciendo al pulsar finalizar
+    const pendingText = (this.latestTranscript + ' ' + this.interimTranscript).trim();
+    if (pendingText.length >= 2) {
+      this.history.push({
+        role: 'user',
+        text: pendingText,
+        timestamp: this.elapsedSeconds
+      });
+    }
+    this.latestTranscript = '';
+    this.interimTranscript = '';
+
     if (this.currentAudioElement) {
       try {
         this.currentAudioElement.pause();

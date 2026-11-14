@@ -7,12 +7,12 @@
  */
 
 document.addEventListener('DOMContentLoaded', async () => {
-  // 1. Service Worker PWA v7.0.0
+  // 1. Service Worker PWA v8.0.0
   if ('serviceWorker' in navigator) {
     try {
-      const reg = await navigator.serviceWorker.register('./sw.js?v=7');
+      const reg = await navigator.serviceWorker.register('./sw.js?v=8.0');
       await reg.update();
-      console.log('[PWA] Service Worker v7.0.0 actualizado.');
+      console.log('[PWA] Service Worker v8.0.0 actualizado.');
     } catch (e) {
       console.warn('[PWA] Service Worker:', e);
     }
@@ -59,6 +59,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   const btnEndSession = document.getElementById('btn-end-session');
 
   const reportScenarioTitle = document.getElementById('report-scenario-title');
+  const reportErrorBanner = document.getElementById('report-error-banner');
+  const reportErrorMessage = document.getElementById('report-error-message');
+  const btnRetryEvaluation = document.getElementById('btn-retry-evaluation');
+  const reportFeedbackSummary = document.getElementById('report-feedback-summary');
   const scoreOverall = document.getElementById('score-overall');
   const scoreGrammar = document.getElementById('score-grammar');
   const scoreVocabulary = document.getElementById('score-vocabulary');
@@ -76,6 +80,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   let latestGeneratedReport = null;
   let latestSessionResult = null;
   let isSubtitlesRevealed = false;
+
+  function escapeHtml(text) {
+    return String(text || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
 
   initAppMode();
   renderCategories();
@@ -219,27 +232,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (pendingMistakes.length > 0 && (activeCategory === 'all' || activeCategory === 'adaptive')) {
       const drillScenario = Curriculum.getMistakesDrillScenario(userLevel, pendingMistakes);
       const drillCard = document.createElement('div');
-      drillCard.className = 'scenario-card';
-      drillCard.style.borderColor = '#10b981';
-      drillCard.style.background = 'linear-gradient(145deg, rgba(16, 185, 129, 0.12), rgba(15, 23, 42, 0.95))';
+      drillCard.className = 'scenario-card mistakes-drill';
 
       const sampleCorrections = pendingMistakes.slice(0, 2)
-        .map(m => `<span style="font-size: 0.75rem; background: rgba(16, 185, 129, 0.18); color: #34d399; padding: 2px 8px; border-radius: 6px; display: inline-block; margin: 2px 4px 2px 0;">✓ "${m.correction}"</span>`)
+        .map(m => `<span style="font-size: 0.7rem; background: var(--bg-secondary); border: 1px solid var(--border); color: var(--success); padding: 2px 6px; border-radius: 4px; display: inline-block; margin: 2px 4px 2px 0;">✓ "${escapeHtml(m.correction)}"</span>`)
         .join('');
 
       drillCard.innerHTML = `
         <div>
           <div class="card-header">
-            <span class="level-tag" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border-color: #10b981;">🔥 Repaso Personalizado (${drillScenario.level})</span>
-            <span style="font-size: 0.8rem; color: #34d399; font-weight: 700;">${pendingMistakes.length} puntos por pulir</span>
+            <span class="level-tag" style="color: var(--success);">Repaso (${escapeHtml(drillScenario.level)})</span>
+            <span style="font-size: 0.72rem; color: var(--success); font-weight: 600;">${pendingMistakes.length} puntos por pulir</span>
           </div>
-          <h3 class="card-title">${drillScenario.title}</h3>
-          <p class="card-desc">${drillScenario.description}</p>
-          <div style="margin-bottom: 10px;">${sampleCorrections}</div>
+          <h3 class="card-title">${escapeHtml(drillScenario.title)}</h3>
+          <p class="card-desc">${escapeHtml(drillScenario.description)}</p>
+          <div style="margin-bottom: 8px;">${sampleCorrections}</div>
         </div>
         <div class="card-footer">
-          <span>🗣️ Emma (Coach Personal)</span>
-          <span style="color: #34d399; font-weight: 700;">Practicar Errores &rarr;</span>
+          <span>Emma (Coach Personal)</span>
+          <span style="color: var(--success); font-weight: 600;">Practicar &rarr;</span>
         </div>
       `;
       drillCard.addEventListener('click', () => startSession(drillScenario));
@@ -252,36 +263,32 @@ document.addEventListener('DOMContentLoaded', async () => {
       const isCompleted = completedIds.includes(sc.id);
 
       const card = document.createElement('div');
-      card.className = 'scenario-card';
-      if (isRecommended) {
-        card.style.borderColor = 'var(--accent)';
-        card.style.boxShadow = '0 0 18px rgba(14, 165, 233, 0.15)';
-      }
+      card.className = isRecommended ? 'scenario-card recommended' : 'scenario-card';
 
-      let statusBadge = `<span style="font-size: 0.8rem; color: var(--text-muted);">⏱️ 10 min</span>`;
+      let statusBadge = `<span style="font-size: 0.72rem; color: var(--text-muted);">10 min</span>`;
       if (isRecommended) {
-        statusBadge = `<span style="font-size: 0.75rem; background: rgba(14, 165, 233, 0.2); color: #38bdf8; padding: 2px 8px; border-radius: 10px; font-weight: 700;">⭐ Recomendado para tu nivel</span>`;
+        statusBadge = `<span style="font-size: 0.68rem; background: var(--bg-secondary); border: 1px solid var(--border); color: var(--text-main); padding: 2px 6px; border-radius: 4px; font-weight: 600;">Recomendado</span>`;
       } else if (isCompleted) {
-        statusBadge = `<span style="font-size: 0.75rem; color: #34d399; font-weight: 700;">✅ Completado</span>`;
+        statusBadge = `<span style="font-size: 0.72rem; color: var(--success); font-weight: 600;">Completado</span>`;
       }
 
       const vocabPreview = Array.isArray(sc.targetVocabulary) && sc.targetVocabulary.length > 0
-        ? `<div style="margin-bottom: 10px; font-size: 0.75rem; color: var(--text-muted);">💡 Meta: <i style="color: #cbd5e1;">"${sc.targetVocabulary[0]}"</i></div>`
+        ? `<div style="margin-bottom: 8px; font-size: 0.7rem; color: var(--text-muted);">Meta: <i style="color: var(--text-main);">"${escapeHtml(sc.targetVocabulary[0])}"</i></div>`
         : '';
 
       card.innerHTML = `
         <div>
           <div class="card-header">
-            <span class="level-tag">${sc.level}</span>
+            <span class="level-tag">${escapeHtml(sc.level)}</span>
             ${statusBadge}
           </div>
-          <h3 class="card-title">${sc.title}</h3>
-          <p class="card-desc">${sc.description}</p>
+          <h3 class="card-title">${escapeHtml(sc.title)}</h3>
+          <p class="card-desc">${escapeHtml(sc.description)}</p>
           ${vocabPreview}
         </div>
         <div class="card-footer">
-          <span>${sc.aiRole.split(',')[0]}</span>
-          <span style="color: var(--accent); font-weight: 600;">Entrenar &rarr;</span>
+          <span>${escapeHtml(sc.aiRole.split(',')[0])}</span>
+          <span style="color: var(--accent-light); font-weight: 600;">Entrenar &rarr;</span>
         </div>
       `;
       card.addEventListener('click', () => startSession(sc));
@@ -380,13 +387,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         speechStatusPill.innerHTML = `<span>🎤</span> <span>Escuchándote...</span>`;
         liveTranscriptText.classList.remove('blind-mode');
         liveTranscriptText.classList.add('revealed');
-        liveTranscriptText.innerHTML = `<span style="color: #34d399; font-weight: 700;">🎤 Tú:</span> "${text}"`;
+        liveTranscriptText.innerHTML = `<span style="color: var(--success); font-weight: 600;">🎤 Tú:</span> "${escapeHtml(text)}"`;
         btnToggleSubtitles.style.display = 'none';
         if (btnSubmitTurn) btnSubmitTurn.style.display = 'inline-flex';
       },
       onAiResponseStarted: () => {
         liveSpeechCard.className = 'live-speech-card thinking';
-        speechStatusPill.innerHTML = `<span>⏳</span> <span>${scenario.aiRole.split(',')[0]} está pensando...</span>`;
+        speechStatusPill.innerHTML = `<span>⏳</span> <span>${escapeHtml(scenario.aiRole.split(',')[0])} está pensando...</span>`;
         liveTranscriptText.classList.remove('blind-mode');
         liveTranscriptText.textContent = 'Formulando respuesta natural...';
         btnToggleSubtitles.style.display = 'none';
@@ -395,22 +402,22 @@ document.addEventListener('DOMContentLoaded', async () => {
       },
       onAiResponseFinished: (aiText) => {
         // En Modo Oído Puro, colocamos el texto pero con efecto blur
-        liveTranscriptText.innerHTML = `<span style="color: #38bdf8; font-weight: 700;">🗣️ Emma:</span> "${aiText}"`;
+        liveTranscriptText.innerHTML = `<span style="color: var(--accent-light); font-weight: 600;">🗣️ Emma:</span> "${escapeHtml(aiText)}"`;
       },
       onStatusChanged: (status, meta = {}) => {
         if (status === 'speaking') {
           liveSpeechCard.className = 'live-speech-card speaking';
-          speechStatusPill.innerHTML = `<span>🔴</span> <span>Emma hablando... (Escucha atenta)</span>`;
+          speechStatusPill.innerHTML = `<span>●</span> <span>Emma hablando... (Escucha atenta)</span>`;
           isSubtitlesRevealed = false;
           updateSubtitlesVisibility();
           btnToggleSubtitles.style.display = 'inline-flex';
           if (btnSubmitTurn) btnSubmitTurn.style.display = 'none';
         } else if (status === 'listening') {
           liveSpeechCard.className = 'live-speech-card listening';
-          speechStatusPill.innerHTML = `<span>🟢</span> <span>TU TURNO: Te escucho</span>`;
+          speechStatusPill.innerHTML = `<span>●</span> <span>TU TURNO: Te escucho</span>`;
           liveTranscriptText.classList.remove('blind-mode');
           liveTranscriptText.classList.remove('revealed');
-          liveTranscriptText.innerHTML = `<span style="color: #94a3b8; font-style: italic;">Habla con naturalidad por tu micrófono o Bluetooth (o toca aquí)...</span>`;
+          liveTranscriptText.innerHTML = `<span style="color: var(--text-muted); font-style: italic;">Habla con naturalidad por tu micrófono o Bluetooth (o toca aquí)...</span>`;
           btnToggleSubtitles.style.display = 'none';
           if (btnSubmitTurn) btnSubmitTurn.style.display = 'none';
         } else if (status === 'thinking') {
@@ -427,7 +434,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       onError: (err) => {
         console.warn('[Session] Aviso:', err.message);
         speechStatusPill.innerHTML = `<span>⚠️</span> <span>Aviso de conexión</span>`;
-        liveTranscriptText.innerHTML = `<span style="color: #f87171;">${err.message}</span>`;
+        liveTranscriptText.innerHTML = `<span style="color: var(--danger);">${escapeHtml(err.message)}</span>`;
       }
     });
 
@@ -482,53 +489,159 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
+  function formatScore(val) {
+    return (typeof val === 'number' && !Number.isNaN(val)) ? val : '--';
+  }
+
+  async function processEvaluationResult(sessionResult, evaluation) {
+    latestGeneratedReport = evaluation.report;
+
+    // Solo persistir nivel/scores/banco de errores si el análisis real tuvo éxito
+    if (evaluation.success && !latestGeneratedReport.isErrorReport) {
+      if (sessionResult.scenario.id === 'placement_test' && latestGeneratedReport.placement) {
+        const assignedLevel = latestGeneratedReport.placement.assignedLevel || 'B1';
+        Config.setLevel(assignedLevel);
+        Config.setPlacementDone(true);
+        await SyncService.savePlacement(assignedLevel, sessionResult, latestGeneratedReport);
+      } else {
+        await SyncService.saveSession(sessionResult, latestGeneratedReport);
+        const overallScore = (latestGeneratedReport.scores && latestGeneratedReport.scores.overall) || 0;
+        const levelUpCheck = Config.recordSessionScore(overallScore);
+        if (levelUpCheck && levelUpCheck.shouldLevelUp) {
+          Config.setLevel(levelUpCheck.nextLevel);
+          setTimeout(() => {
+            alert(`¡Felicidades! Por tu promedio (${levelUpCheck.averageScore}/100), subiste de ${levelUpCheck.currentLevel} a ${levelUpCheck.nextLevel}.`);
+          }, 600);
+        }
+      }
+      updateUserBadge();
+      renderScenarios();
+    } else {
+      console.warn('[Evaluation] No se guardaron calificaciones porque falló la evaluación real:', evaluation.error);
+    }
+
+    renderReport(sessionResult.scenario, latestGeneratedReport, sessionResult);
+  }
+
   async function handleSessionCompleted(sessionResult) {
     speechStatusPill.innerHTML = `<span>📊</span> <span>Generando Diagnóstico Forense...</span>`;
     liveTranscriptText.textContent = 'Analizando gramática, vocabulario y pronunciación en Gemini...';
 
     const apiKey = Config.getApiKey();
     const evaluation = await Evaluator.analyzeSession(sessionResult, apiKey);
-    latestGeneratedReport = evaluation.report;
-
-    if (sessionResult.scenario.id === 'placement_test' && latestGeneratedReport.placement) {
-      const assignedLevel = latestGeneratedReport.placement.assignedLevel || 'B1';
-      Config.setLevel(assignedLevel);
-      Config.setPlacementDone(true);
-      await SyncService.savePlacement(assignedLevel, sessionResult, latestGeneratedReport);
-    } else {
-      await SyncService.saveSession(sessionResult, latestGeneratedReport);
-      // Evaluar si el desempeño sostenido amerita subir de nivel automáticamente
-      const overallScore = (latestGeneratedReport.scores && latestGeneratedReport.scores.overall) || 0;
-      const levelUpCheck = Config.recordSessionScore(overallScore);
-      if (levelUpCheck && levelUpCheck.shouldLevelUp) {
-        Config.setLevel(levelUpCheck.nextLevel);
-        setTimeout(() => {
-          alert(`🎉 ¡Felicidades! Por tu excelente promedio (${levelUpCheck.averageScore}/100), has subido del nivel ${levelUpCheck.currentLevel} al nivel ${levelUpCheck.nextLevel}.`);
-        }, 600);
-      }
-    }
-
-    updateUserBadge();
-    renderScenarios();
-
-    renderReport(sessionResult.scenario, latestGeneratedReport, sessionResult);
+    await processEvaluationResult(sessionResult, evaluation);
     switchView('report');
 
-    if (Config.isDriveMode() && latestGeneratedReport.spokenSummary) {
+    if (
+      Config.isDriveMode() &&
+      evaluation.success &&
+      latestGeneratedReport &&
+      !latestGeneratedReport.isErrorReport &&
+      latestGeneratedReport.spokenSummary
+    ) {
       setTimeout(() => {
         speakSummary(latestGeneratedReport.spokenSummary);
-      }, 1000);
+      }, 800);
+    }
+  }
+
+  if (btnRetryEvaluation) {
+    btnRetryEvaluation.addEventListener('click', async () => {
+      if (!latestSessionResult) return;
+      btnRetryEvaluation.disabled = true;
+      btnRetryEvaluation.textContent = 'Reintentando...';
+      try {
+        const evaluation = await Evaluator.analyzeSession(latestSessionResult, Config.getApiKey());
+        await processEvaluationResult(latestSessionResult, evaluation);
+      } finally {
+        btnRetryEvaluation.disabled = false;
+        btnRetryEvaluation.textContent = 'Reintentar análisis';
+      }
+    });
+  }
+
+  function renderReportFeedbackSummary(report, isError) {
+    if (!reportFeedbackSummary) return;
+    if (isError) {
+      reportFeedbackSummary.classList.remove('visible');
+      reportFeedbackSummary.innerHTML = '';
+      return;
+    }
+
+    const parts = [];
+    if (report.executiveSummary) {
+      parts.push(`
+        <div style="margin-bottom: 8px;">
+          <div class="summary-section-title">Diagnóstico del Coach</div>
+          <div>${escapeHtml(report.executiveSummary)}</div>
+        </div>
+      `);
+    }
+
+    if (report.placement && report.placement.assignedLevel) {
+      parts.push(`
+        <div style="margin-bottom: 8px;">
+          <div class="summary-section-title">Nivel Asignado: ${escapeHtml(report.placement.assignedLevel)}</div>
+          <div style="color: var(--text-muted);">${escapeHtml(report.placement.rationale || '')}</div>
+        </div>
+      `);
+    }
+
+    const metaBlocks = [];
+    if (Array.isArray(report.strengths) && report.strengths.length > 0) {
+      const list = report.strengths.map(s => `<li>${escapeHtml(s)}</li>`).join('');
+      metaBlocks.push(`
+        <div>
+          <div class="summary-section-title">Fortalezas</div>
+          <ul style="padding-left: 16px; color: var(--text-main);">${list}</ul>
+        </div>
+      `);
+    }
+
+    if (report.homeworkChallenge) {
+      metaBlocks.push(`
+        <div>
+          <div class="summary-section-title">Reto para tu próxima sesión</div>
+          <div style="color: var(--text-main);">${escapeHtml(report.homeworkChallenge)}</div>
+        </div>
+      `);
+    }
+
+    if (metaBlocks.length > 0) {
+      parts.push(`<div class="summary-meta-grid">${metaBlocks.join('')}</div>`);
+    }
+
+    if (parts.length > 0) {
+      reportFeedbackSummary.innerHTML = parts.join('');
+      reportFeedbackSummary.classList.add('visible');
+    } else {
+      reportFeedbackSummary.classList.remove('visible');
+      reportFeedbackSummary.innerHTML = '';
     }
   }
 
   function renderReport(scenario, report, sessionResult) {
     reportScenarioTitle.textContent = scenario.title;
-    const scores = report.scores || { grammar: 0, vocabulary: 0, pronunciation: 0, overall: 0 };
+    const isError = Boolean(report && report.isErrorReport);
+    const scores = (report && report.scores) || { grammar: null, vocabulary: null, pronunciation: null, overall: null };
 
-    scoreOverall.textContent = scores.overall;
-    scoreGrammar.textContent = scores.grammar;
-    scoreVocabulary.textContent = scores.vocabulary;
-    scorePronunciation.textContent = scores.pronunciation;
+    if (reportErrorBanner && reportErrorMessage) {
+      reportErrorBanner.classList.toggle('visible', isError);
+      reportErrorMessage.textContent = isError
+        ? (report.errorMessage || 'No se pudo completar la evaluación con Gemini.')
+        : '';
+    }
+
+    if (btnListenSummary) {
+      btnListenSummary.style.display = (!isError && report && report.spokenSummary) ? 'inline-flex' : 'none';
+    }
+
+    scoreOverall.textContent = formatScore(scores.overall);
+    scoreGrammar.textContent = formatScore(scores.grammar);
+    scoreVocabulary.textContent = formatScore(scores.vocabulary);
+    scorePronunciation.textContent = formatScore(scores.pronunciation);
+
+    renderReportFeedbackSummary(report || {}, isError);
 
     // Pestaña 1: Gramática
     tabGrammar.innerHTML = '';
@@ -537,39 +650,50 @@ document.addEventListener('DOMContentLoaded', async () => {
         const item = document.createElement('div');
         item.className = 'audit-card';
         item.innerHTML = `
-          <div style="font-size: 0.8rem; font-weight: 700; color: var(--accent); margin-bottom: 6px;">${g.rule || 'REGLA GRAMATICAL'}</div>
-          <div class="diff-original">❌ Tú dijiste: "${g.original}"</div>
-          <div class="diff-corrected">✅ Lo correcto: "${g.corrected}"</div>
-          <div class="diff-explanation">💡 Explicación: ${g.explanation}</div>
+          <div style="font-size: 0.72rem; font-weight: 700; color: var(--accent-light); margin-bottom: 5px; text-transform: uppercase;">${escapeHtml(g.rule || 'Regla gramatical')}</div>
+          <div class="diff-original">✗ Tú dijiste: "${escapeHtml(g.original)}"</div>
+          <div class="diff-corrected">✓ Lo correcto: "${escapeHtml(g.corrected)}"</div>
+          <div class="diff-explanation">Explicación: ${escapeHtml(g.explanation)}</div>
         `;
         tabGrammar.appendChild(item);
       });
     } else {
-      tabGrammar.innerHTML = '<div class="audit-card">¡Excelente gramática! No se detectaron errores graves en esta sesión.</div>';
+      tabGrammar.innerHTML = isError
+        ? '<div class="audit-card">Análisis gramatical no disponible porque la evaluación falló. Puedes revisar tu transcripción o pulsar "Reintentar análisis".</div>'
+        : '<div class="audit-card">Sin correcciones gramaticales mayores detectadas en esta sesión.</div>';
     }
 
     // Pestaña 2: Vocabulario
     tabVocabulary.innerHTML = '';
-    if (report.fillerWords && report.fillerWords.length > 0) {
+    const hasFillers = Array.isArray(report.fillerWords) && report.fillerWords.length > 0;
+    const hasVocab = Array.isArray(report.vocabularyAudit) && report.vocabularyAudit.length > 0;
+
+    if (hasFillers) {
       const fillerCard = document.createElement('div');
       fillerCard.className = 'audit-card';
-      const pills = report.fillerWords.map(f => `<span style="background: rgba(245, 158, 11, 0.2); color: #fbbf24; padding: 4px 10px; border-radius: 12px; font-size: 0.82rem; margin-right: 6px;">"${f.word}" (${f.count}x)</span>`).join('');
-      fillerCard.innerHTML = `<div style="font-weight: 700; margin-bottom: 8px;">Muletillas detectadas (Filler Words):</div><div>${pills}</div>`;
+      const pills = report.fillerWords
+        .map(f => `<span style="background: var(--bg-secondary); border: 1px solid var(--border); color: var(--warning); padding: 3px 8px; border-radius: 6px; font-size: 0.74rem; margin-right: 6px; display: inline-block; margin-bottom: 4px;">"${escapeHtml(f.word)}" (${f.count}x)</span>`)
+        .join('');
+      fillerCard.innerHTML = `<div style="font-weight: 600; margin-bottom: 6px; font-size: 0.8rem;">Muletillas detectadas (Filler Words):</div><div>${pills}</div>`;
       tabVocabulary.appendChild(fillerCard);
     }
 
-    if (report.vocabularyAudit && report.vocabularyAudit.length > 0) {
+    if (hasVocab) {
       report.vocabularyAudit.forEach(v => {
         const item = document.createElement('div');
         item.className = 'audit-card';
         item.innerHTML = `
-          <div style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 6px;">Frase dicha: "${v.original}"</div>
-          <div class="diff-corrected">💬 Opción Nativa Informal: "${v.nativeAlternative}"</div>
-          <div style="color: #38bdf8; background: rgba(56, 189, 248, 0.1); padding: 6px 10px; border-radius: 4px; margin-bottom: 8px; font-size: 0.95rem; font-weight: 600;">💼 Opción Negocios / Ejecutiva: "${v.businessAlternative}"</div>
-          <div class="diff-explanation">💡 ${v.reason || 'Eleva tu nivel'}</div>
+          <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 6px;">Frase dicha: "${escapeHtml(v.original)}"</div>
+          <div class="diff-corrected">Opción Nativa Informal: "${escapeHtml(v.nativeAlternative)}"</div>
+          <div class="diff-upgrade">Opción Ejecutiva: "${escapeHtml(v.businessAlternative)}"</div>
+          <div class="diff-explanation">${escapeHtml(v.reason || 'Eleva tu precisión léxica')}</div>
         `;
         tabVocabulary.appendChild(item);
       });
+    } else if (!hasFillers) {
+      tabVocabulary.innerHTML = isError
+        ? '<div class="audit-card">Análisis de vocabulario no disponible por error de evaluación.</div>'
+        : '<div class="audit-card">Sin sugerencias adicionales de vocabulario para esta sesión.</div>';
     }
 
     // Pestaña 3: Pronunciación
@@ -580,17 +704,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         item.className = 'audit-card';
 
         item.innerHTML = `
-          <div class="pronounce-row" style="margin-bottom: 8px;">
+          <div class="pronounce-row" style="margin-bottom: 6px;">
             <div>
-              <span class="pronounce-word">${p.word}</span>
-              <span class="pronounce-ipa">${p.ipa}</span>
-              <div style="font-size: 0.85rem; color: #fbbf24;">Cómo suena: <b>${p.figuredPronunciation}</b></div>
+              <span class="pronounce-word">${escapeHtml(p.word)}</span>
+              <span class="pronounce-ipa">${escapeHtml(p.ipa || '')}</span>
+              <div style="font-size: 0.78rem; color: var(--warning);">Cómo suena: <b>${escapeHtml(p.figuredPronunciation || '')}</b></div>
             </div>
-            <div style="display: flex; gap: 8px;">
-              <button class="pronounce-audio-btn btn-play-native" data-word="${p.word}">🔊 Escuchar</button>
+            <div style="display: flex; gap: 6px;">
+              <button class="pronounce-audio-btn btn-play-native" data-word="${escapeHtml(p.word)}">🔊 Escuchar</button>
             </div>
           </div>
-          <div class="diff-explanation">👅 Articulación: ${p.phoneticTip}</div>
+          <div class="diff-explanation">Articulación: ${escapeHtml(p.phoneticTip || '')}</div>
         `;
 
         const btnNative = item.querySelector('.btn-play-native');
@@ -601,7 +725,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         tabPronunciation.appendChild(item);
       });
     } else {
-      tabPronunciation.innerHTML = '<div class="audit-card">¡Gran articulación! Se comprendió claramente cada palabra.</div>';
+      tabPronunciation.innerHTML = isError
+        ? '<div class="audit-card">Análisis de pronunciación no disponible por error de evaluación.</div>'
+        : '<div class="audit-card">Sin observaciones críticas de articulación en esta sesión.</div>';
     }
 
     // Pestaña 4: Transcripción Completa Turno a Turno
@@ -622,10 +748,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         row.innerHTML = `
           <div class="chat-bubble">
             <div class="chat-bubble-header">
-              <span>${isCoach ? '🗣️ Emma (Coach)' : '🎤 Tú'}</span>
-              <span>⏱️ ${timeLabel}</span>
+              <span>${isCoach ? 'Emma (Coach)' : 'Tú'}</span>
+              <span>${timeLabel}</span>
             </div>
-            <div>${h.text}</div>
+            <div>${escapeHtml(h.text)}</div>
           </div>
         `;
         chatContainer.appendChild(row);

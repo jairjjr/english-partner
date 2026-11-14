@@ -6,8 +6,8 @@
   <title>English Partner - AI Voice English Coach</title>
   <meta name="description" content="Entrenador conversacional de inglés por voz de 10 minutos con diagnóstico de gramática, vocabulario y pronunciación.">
   <link rel="manifest" href="./manifest.json">
-  <meta name="theme-color" content="#0ea5e9">
-  <link rel="stylesheet" href="./css/styles.css?v=7.2">
+  <meta name="theme-color" content="#050506">
+  <link rel="stylesheet" href="./css/styles.css?v=8.0">
 </head>
 <body>
 
@@ -23,7 +23,7 @@
 
     <div class="header-controls">
       <span id="user-level-badge" class="level-tag" style="display: inline-block;">Nivel: Evaluando...</span>
-      <button id="btn-drive-toggle" class="btn-drive-toggle" title="Activa o desactiva botones gigantes y lectura por audio para manejar">
+      <button id="btn-drive-toggle" class="btn-drive-toggle" title="Activa o desactiva botones grandes y pantalla negra para manejar">
         🚗 Modo Camioneta
       </button>
       <button id="btn-settings" class="btn-icon" title="Configurar API Key y Google Sheet">⚙️</button>
@@ -42,13 +42,13 @@
       <div id="placement-banner" class="placement-banner">
         <div>
           <span class="placement-badge">Paso 1 Recomendado</span>
-          <h2 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 4px;">Evaluación Diagnóstica Inicial (Placement Test)</h2>
-          <p style="font-size: 0.9rem; color: var(--text-muted);">
-            Conversa 7-10 minutos con Emma. Te hará preguntas adaptativas para diagnosticar tu nivel real (A2, B1, B2 o C1) y calibrar tu plan.
+          <h2 class="placement-title">Evaluación Diagnóstica Inicial (Placement Test)</h2>
+          <p class="placement-desc">
+            Conversa 7-10 minutos con Emma para diagnosticar tu nivel real (A2, B1, B2 o C1) y calibrar tu plan.
           </p>
         </div>
-        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-          <button id="btn-test-voice" class="btn-primary" style="background: var(--bg-card); border: 1px solid var(--accent); white-space: nowrap;">
+        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+          <button id="btn-test-voice" class="btn-secondary" style="white-space: nowrap;">
             🔊 Probar Voz
           </button>
           <button id="btn-start-placement" class="btn-primary" style="white-space: nowrap;">
@@ -75,14 +75,14 @@
     <section id="view-session" class="view-panel">
       <div class="voice-room">
         
-        <h2 id="session-scenario-title" style="font-size: 1.35rem; font-weight: 700; margin-bottom: 6px;">
+        <h2 id="session-scenario-title" class="session-title">
           Sesión de Conversación
         </h2>
-        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 14px;">
-          Conversación libre de 10 minutos. Habla con naturalidad por tu micrófono o Bluetooth.
+        <p class="session-subtitle">
+          Conversación libre de 10 minutos por micrófono o Bluetooth.
         </p>
 
-        <!-- TEMPORIZADOR GIGANTE -->
+        <!-- TEMPORIZADOR -->
         <div class="timer-container">
           <div id="session-timer-digits" class="timer-digits">10:00</div>
           <div class="timer-label">Tiempo Restante</div>
@@ -105,7 +105,7 @@
           </div>
           <div class="speech-subtitles-area">
             <p id="live-transcript-text" class="subtitles-text">Conectando micrófono y coach...</p>
-            <div style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;">
+            <div style="display: flex; gap: 6px; flex-wrap: wrap; justify-content: center;">
               <button id="btn-toggle-subtitles" class="btn-subtitles-toggle" type="button" style="display: none;">
                 👁️ Ver subtítulo
               </button>
@@ -118,11 +118,11 @@
 
         <!-- BOTONES DE CONTROL DE SESIÓN DE VOZ -->
         <div class="voice-actions">
-          <button id="btn-replay-ai" class="btn-primary" style="flex: 1; justify-content: center; padding: 16px;">
+          <button id="btn-replay-ai" class="btn-secondary btn-voice-action">
             🔊 Repetir Voz
           </button>
           <button id="btn-end-session" class="btn-voice-end">
-            ⏹️ Finalizar y Ver Corrección
+            ⏹️ Finalizar y Evaluar
           </button>
         </div>
 
@@ -131,16 +131,29 @@
 
 
     <!-- ==========================================
-         VISTA 3: REPORTE FORENSE POST-SESIÓN (3 PESTAÑAS)
+         VISTA 3: REPORTE FORENSE POST-SESIÓN (4 PESTAÑAS)
          ========================================== -->
     <section id="view-report" class="view-panel">
       <div class="report-header">
-        <h2 id="report-scenario-title" style="font-size: 1.4rem; font-weight: 800; margin-bottom: 6px;">
+        <h2 id="report-scenario-title" class="report-title">
           Diagnóstico de Sesión
         </h2>
-        <p style="color: var(--text-muted); font-size: 0.9rem;">
-          Auditoría forense completa de tu entrenamiento de 10 minutos.
+        <p class="report-subtitle">
+          Auditoría CEFR de tu sesión de conversación.
         </p>
+      </div>
+
+      <!-- BANNER DE ERROR / REINTENTO (SI FALLA LA AUDITORÍA GEMINI) -->
+      <div id="report-error-banner" class="report-error-banner">
+        <div>
+          <b>⚠️ No se pudo generar la evaluación automática:</b>
+          <p id="report-error-message" style="margin-top: 4px;"></p>
+        </div>
+        <div>
+          <button id="btn-retry-evaluation" class="btn-primary" type="button">
+            🔄 Reintentar Auditoría con Gemini
+          </button>
+        </div>
       </div>
 
       <!-- MÉTRICAS DE PUNTUACIÓN (0 - 100) -->
@@ -150,32 +163,37 @@
           <div class="score-label">Global</div>
         </div>
         <div class="score-badge-card">
-          <div id="score-grammar" class="score-num" style="color: #38bdf8;">--</div>
+          <div id="score-grammar" class="score-num">--</div>
           <div class="score-label">Gramática</div>
         </div>
         <div class="score-badge-card">
-          <div id="score-vocabulary" class="score-num" style="color: #fbbf24;">--</div>
+          <div id="score-vocabulary" class="score-num">--</div>
           <div class="score-label">Vocabulario</div>
         </div>
         <div class="score-badge-card">
-          <div id="score-pronunciation" class="score-num" style="color: #34d399;">--</div>
+          <div id="score-pronunciation" class="score-num">--</div>
           <div class="score-label">Pronunciación</div>
         </div>
+      </div>
+
+      <!-- RESUMEN EJECUTIVO, FORTALEZAS Y RETO -->
+      <div id="report-feedback-summary" class="report-summary-card">
+        <!-- Renderizado dinámico en app-v7.js -->
       </div>
 
       <!-- BOTÓN PARA ESCUCHAR RESUMEN (MODO CAMIONETA) -->
       <div style="text-align: center;">
         <button id="btn-listen-summary" class="btn-listen-summary">
-          🔊 Escuchar Resumen del Coach (Para el Auto)
+          🔊 Escuchar Resumen del Coach
         </button>
       </div>
 
       <!-- SELECTOR DE LAS 4 PESTAÑAS (INCLUYE TRANSCRIPCIÓN COMPLETA) -->
       <div class="report-tabs">
         <button class="report-tab-btn active" data-tab="grammar">📝 Gramática</button>
-        <button class="report-tab-btn" data-tab="vocabulary">📚 Vocabulario & Muletillas</button>
+        <button class="report-tab-btn" data-tab="vocabulary">📚 Vocabulario</button>
         <button class="report-tab-btn" data-tab="pronunciation">🗣️ Pronunciación</button>
-        <button class="report-tab-btn" data-tab="transcript">📜 Transcripción Completa</button>
+        <button class="report-tab-btn" data-tab="transcript">📜 Transcripción</button>
       </div>
 
       <!-- CONTENIDOS DE LAS 4 PESTAÑAS -->
@@ -196,8 +214,8 @@
       </div>
 
       <!-- BOTÓN VOLVER AL HOME -->
-      <div style="text-align: center; margin: 30px 0;">
-        <button id="btn-back-home" class="btn-primary" style="background: var(--bg-card); border: 1px solid var(--border);">
+      <div style="text-align: center; margin: 18px 0;">
+        <button id="btn-back-home" class="btn-secondary">
           &larr; Volver a las Lecciones
         </button>
       </div>
@@ -211,24 +229,24 @@
        ========================================== -->
   <div id="modal-settings" class="modal-overlay">
     <div class="modal-box">
-      <h3 style="font-size: 1.2rem; font-weight: 700; margin-bottom: 6px;">⚙️ Configuración Personal</h3>
-      <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 20px;">
-        Tus credenciales se guardan localmente en tu dispositivo o se sincronizan con tu Google Apps Script privado.
+      <h3 style="font-size: 1rem; font-weight: 700; margin-bottom: 4px;">⚙️ Configuración Personal</h3>
+      <p style="font-size: 0.76rem; color: var(--text-muted); margin-bottom: 14px;">
+        Tus credenciales se guardan localmente o se sincronizan con tu Google Apps Script privado.
       </p>
 
       <div class="form-group">
         <label class="form-label" for="input-api-key">Gemini API Key (Google AI Studio)</label>
         <input type="password" id="input-api-key" class="form-input" placeholder="AIzaSy...">
-        <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
-          ¿No tienes una? Puedes obtenerla gratis en <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color: var(--accent);">aistudio.google.com</a>
+        <p style="font-size: 0.7rem; color: var(--text-muted); margin-top: 3px;">
+          Obtén o gestiona tu clave en <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color: var(--accent-bright);">aistudio.google.com</a>
         </p>
       </div>
 
       <div class="form-group">
         <label class="form-label" for="input-gas-url">URL de Google Apps Script Web App (Opcional)</label>
         <input type="url" id="input-gas-url" class="form-input" placeholder="https://script.google.com/macros/s/.../exec">
-        <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
-          Conecta con tu Google Sheet personal para guardar el historial y sincronizar móvil y PC.
+        <p style="font-size: 0.7rem; color: var(--text-muted); margin-top: 3px;">
+          Conecta con tu Google Sheet personal para guardar historial y sincronizar dispositivos.
         </p>
       </div>
 
@@ -244,13 +262,13 @@
           <option value="2800" selected>⚡ Estándar (2.8 s) - Recomendado y natural</option>
           <option value="1800">🚀 Fluido (1.8 s) - Respuestas rápidas / Avanzado</option>
         </select>
-        <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
+        <p style="font-size: 0.7rem; color: var(--text-muted); margin-top: 3px;">
           Evita que Emma te interrumpa cuando haces pausas para buscar palabras en inglés.
         </p>
       </div>
 
-      <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px;">
-        <button id="btn-close-settings" class="btn-primary" style="background: var(--bg-card); border: 1px solid var(--border); box-shadow: none;">
+      <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px;">
+        <button id="btn-close-settings" class="btn-secondary">
           Cancelar
         </button>
         <button id="btn-save-settings" class="btn-primary">
@@ -261,14 +279,14 @@
   </div>
 
 
-  <!-- ARCHIVOS JAVASCRIPT MODULARES (VERSIÓN V7.2 - ADAPTIVE PROGRESSION & MISTAKE VAULT) -->
-  <script src="./js/config.js?v=7.2"></script>
-  <script src="./js/curriculum.js?v=7.2"></script>
-  <script src="./js/audio-vad.js?v=7.2"></script>
-  <script src="./js/voice-engine-v7.js?v=7.2"></script>
-  <script src="./js/evaluator-v5.js?v=7.2"></script>
-  <script src="./js/sync.js?v=7.2"></script>
-  <script src="./js/app-v7.js?v=7.2"></script>
+  <!-- ARCHIVOS JAVASCRIPT MODULARES (VERSIÓN V8.0 - OBSIDIAN COMPACT & AUDITORÍA REAL) -->
+  <script src="./js/config.js?v=8.0"></script>
+  <script src="./js/curriculum.js?v=8.0"></script>
+  <script src="./js/audio-vad.js?v=8.0"></script>
+  <script src="./js/voice-engine-v7.js?v=8.0"></script>
+  <script src="./js/evaluator-v5.js?v=8.0"></script>
+  <script src="./js/sync.js?v=8.0"></script>
+  <script src="./js/app-v7.js?v=8.0"></script>
 </body>
 </html>
 

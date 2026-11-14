@@ -1,17 +1,17 @@
-// Service Worker para English Partner PWA (v7.2.0 Scorched Earth Cache & Network-First)
-const CACHE_NAME = 'english-partner-v7.2.0';
+// Service Worker para English Partner PWA (v8.0.0 Scorched Earth Cache & Network-First)
+const CACHE_NAME = 'english-partner-v8.0.0';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
   './manifest.json',
-  './css/styles.css?v=7.2',
-  './js/config.js?v=7.2',
-  './js/curriculum.js?v=7.2',
-  './js/audio-vad.js?v=7.2',
-  './js/voice-engine-v7.js?v=7.2',
-  './js/evaluator-v5.js?v=7.2',
-  './js/sync.js?v=7.2',
-  './js/app-v7.js?v=7.2'
+  './css/styles.css?v=8.0',
+  './js/config.js?v=8.0',
+  './js/curriculum.js?v=8.0',
+  './js/audio-vad.js?v=8.0',
+  './js/voice-engine-v7.js?v=8.0',
+  './js/evaluator-v5.js?v=8.0',
+  './js/sync.js?v=8.0',
+  './js/app-v7.js?v=8.0'
 ];
 
 self.addEventListener('install', (event) => {

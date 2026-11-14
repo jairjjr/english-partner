@@ -1,17 +1,16 @@
 {
   "project": "English Partner",
-  "version": "7.2.0",
-  "build_timestamp_utc": "2026-11-07T21:11:00Z",
+  "version": "8.0.0",
+  "build_timestamp_utc": "2026-11-14T15:56:36Z",
   "target_environment": "production",
   "platform": "PWA / WebKit Safari / Android Chrome / Samsung Internet",
   "tts_engine": "Google Gemini Native Studio Audio (gemini-3.8-flash-lite-tts, voice Aoede 24kHz)",
   "features": [
-    "Adaptive Speech Rate & Lexical Complexity by CEFR Level (A2 0.90x -> C1 1.04x)",
-    "Active Spaced-Repetition Mistake Vault Injection into Coach Memory",
-    "Personalized 'Práctica Enfocada en Mis Errores' Dynamic Scenario Card",
-    "Smart Curriculum Sorting with '⭐ Recomendado para tu nivel' & Auto Level-Up",
-    "Adaptive Silence Hold Time (2.8s default / 3.5s relaxed) & Instant Submit Button",
-    "Blind Listening Mode (Modo Oido Puro) & Complete Conversation Transcript (Tab 4)"
+    "Obsidian Ultra-Dark UI Theme (#050506) with Compact Typography & Controls (~25-30% smaller)",
+    "Real CEFR Forensic Evaluator (removed hardcoded 80 fallback, HTTP 400 responseMimeType retry, markdown JSON extraction)",
+    "VoiceEngine Pending Transcript Flush on Stop",
+    "Explicit Report Error Banner, Retry Evaluation Button, Executive Summary, Strengths & Homework Challenge Cards",
+    "Scorched Earth Service Worker & Cache Busting (?v=8.0)"
   ],
-  "verification": "jsc syntax check passed with exit code 0"
+  "verification": "jsc syntax check (8 files, exit code 0) + test_v8 unit tests passed"
 }
